@@ -65,9 +65,23 @@ def log(msg: str) -> None:
     _log.append(line)
 
 
+def rollback_target() -> str | None:
+    """The version a rollback would restore, if a snapshot exists (independent of the last attempt's outcome)."""
+    try:
+        return json.loads((SAFE / "snapshot.json").read_text())["version"] if PREV.is_dir() else None
+    except (OSError, ValueError, KeyError):
+        return None
+
+
+def drop_snapshot() -> None:
+    shutil.rmtree(PREV, ignore_errors=True)
+    (SAFE / "snapshot.json").unlink(missing_ok=True)
+
+
 def status(state: str, **kw) -> None:
     DOWNLOADS.mkdir(parents=True, exist_ok=True)
-    data = {"state": state, "updated_at": datetime.now(UTC).isoformat(), "log": _log[-60:], **kw}
+    data = {"state": state, "updated_at": datetime.now(UTC).isoformat(), "log": _log[-60:],
+            "rollback_to": rollback_target() if state != "running" else None, **kw}
     tmp = STATUS.with_suffix(".tmp")
     tmp.write_text(json.dumps(data))
     try:
@@ -199,10 +213,11 @@ def install(version: str) -> None:
             log(f"Update failed: {e}. Rolling back automatically.")
             status("running", version=version, previous=current, step="rollback")
             back = restore_snapshot()
+            drop_snapshot()  # the snapshot is what runs now; the earlier snapshot was replaced by this attempt
             status("rolled_back", version=version, previous=current, error=str(e), running=back)
             raise SystemExit(1) from None
     log(f"Updated {current} → {version}")
-    status("success", version=version, previous=current, running=version, rollback_available=True)
+    status("success", version=version, previous=current, running=version)
 
 
 def main(argv: list[str]) -> int:
@@ -222,8 +237,7 @@ def main(argv: list[str]) -> int:
         if action == "rollback":
             status("running", step="rollback", previous=current)
             back = restore_snapshot()
-            shutil.rmtree(PREV, ignore_errors=True)  # one rollback per update: the snapshot is now live
-            (SAFE / "snapshot.json").unlink(missing_ok=True)
+            drop_snapshot()  # one rollback per update: the snapshot is now live
             log(f"Rolled back {current} → {back}")
             status("rolled_back", previous=current, running=back, manual=True)
             return 0

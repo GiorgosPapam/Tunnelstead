@@ -6,7 +6,7 @@ import { Alert, Card, Field, Modal, Spinner } from "../components/ui";
 type Rel = { version: string; notes: string; published_at: string | null };
 type St = { state: string; version?: string; previous?: string; running?: string; error?: string; step?: string; log?: string[]; manual?: boolean; updated_at?: string };
 type O = { current: string; settings: { repo: string; mode: string; day: string; hour: number };
-  check: { checked_at: number; latest: Rel | null; newer: Rel[] } | null; status: St; rollback_available: boolean; downloaded: string[] };
+  check: { checked_at: number; latest: Rel | null; newer: Rel[] } | null; status: St; rollback_to: string | null; downloaded: string[] };
 const STEP: Record<string, string> = { verify: "Checking the signature", snapshot: "Saving a snapshot", install: "Installing", rollback: "Rolling back" };
 
 export default function Updates() {
@@ -48,15 +48,15 @@ export default function Updates() {
               <Download size={16} aria-hidden="true" />{busy === "dl" ? "Downloading and verifying…" : "Download"}</button>
               : <button className="btn btn-primary" disabled={!!busy || running} onClick={() => act("install", () => api(`/api/updates/${latest.version}/install`, { method: "POST" }))}>Install {latest.version} now</button>}
           </div></>}
-        {o.rollback_available && !running && <div className="border-t border-[var(--border)] mt-4 pt-4 flex flex-wrap items-center gap-3 text-sm">
-          <span className="flex-1 min-w-[14rem]">Problems after the update? Go back to <strong>{st.previous}</strong>.</span>
+        {o.rollback_to && !running && <div className="border-t border-[var(--border)] mt-4 pt-4 flex flex-wrap items-center gap-3 text-sm">
+          <span className="flex-1 min-w-[14rem]">Problems after the update? Go back to <strong>{o.rollback_to}</strong>, the version before the last update.</span>
           <button className="btn" onClick={() => setConfirmRb(true)}><RotateCcw size={16} aria-hidden="true" />Roll back</button></div>}
         {st.log && st.log.length > 0 && <details className="mt-4"><summary className="cursor-pointer text-sm muted">Details of the last update</summary>
           <pre className="text-xs overflow-auto max-h-72 p-3 rounded-xl mt-2" style={{ background: "var(--surface-2)" }}>{st.log.join("\n")}</pre></details>}
       </Card>
       <Schedule o={o} onSaved={setO} />
     </div>
-    {confirmRb && <Modal title={`Roll back to ${st.previous}?`} onClose={() => setConfirmRb(false)}>
+    {confirmRb && <Modal title={`Roll back to ${o.rollback_to}?`} onClose={() => setConfirmRb(false)}>
       <p className="text-sm mt-0">VPNix Create and its database go back to the snapshot taken just before the update. Changes made since then (new clients, settings, users) are lost.</p>
       <div className="flex gap-2 justify-end"><button className="btn" onClick={() => setConfirmRb(false)}>Cancel</button>
         <button className="btn btn-danger" onClick={() => { setConfirmRb(false); act("rollback", () => api("/api/updates/rollback", { method: "POST" })); }}>Roll back</button></div></Modal>}

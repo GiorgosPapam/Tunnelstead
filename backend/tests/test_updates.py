@@ -201,3 +201,31 @@ def test_release_tool_signature_matches_updater(tmp_path):
     spec2.loader.exec_module(R)
     assert R.message("1.2.3", "ab") == U.message("1.2.3", "ab") == b"vpnix-create-release:1.2.3:ab"
     assert json.loads(json.dumps({"ok": 1}))  # sanity
+
+
+def test_refused_attempt_keeps_rollback(tmp_path, monkeypatch):
+    """Regression: a refused downgrade after a good update must not hide the rollback (found on the real VPS)."""
+    monkeypatch.setattr(U, "PREV", tmp_path / "prev")
+    monkeypatch.setattr(U, "SAFE", tmp_path / "safe")
+    monkeypatch.setattr(U, "DOWNLOADS", tmp_path / "dl")
+    monkeypatch.setattr(U, "STATUS", tmp_path / "dl" / "status.json")
+    (tmp_path / "prev").mkdir()
+    (tmp_path / "safe").mkdir()
+    (tmp_path / "safe" / "snapshot.json").write_text(json.dumps({"version": "0.1.0", "replaced_by": "0.1.1"}))
+    U.status("failed", error="0.1.0 is not newer than the installed 0.1.1")
+    assert json.loads((tmp_path / "dl" / "status.json").read_text())["rollback_to"] == "0.1.0"
+    U.drop_snapshot()
+    U.status("rolled_back", manual=True)
+    assert json.loads((tmp_path / "dl" / "status.json").read_text())["rollback_to"] is None
+
+
+def test_api_rollback_follows_snapshot(app, db, helper, monkeypatch, tmp_path):
+    monkeypatch.setenv("VPNIX_UPDATE_DIR", str(tmp_path))
+    make_user(db, "boss")
+    c = login(app, "boss")
+    (tmp_path / "status.json").write_text(json.dumps({"state": "failed", "rollback_to": "0.1.0"}))
+    assert c.get("/api/updates").json()["rollback_to"] == "0.1.0"
+    assert c.post("/api/updates/rollback").status_code == 202
+    assert ("sys.update", {"action": "rollback"}) in helper.calls
+    (tmp_path / "status.json").write_text(json.dumps({"state": "running", "rollback_to": "0.1.0"}))
+    assert c.post("/api/updates/rollback").status_code == 422

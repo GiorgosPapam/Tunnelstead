@@ -122,11 +122,13 @@ def main():
         check("downgrade refused", "not newer" in out and version() == "0.1.1")
         s, _ = api.req("POST", "/api/updates/0.1.0/download")
         check("dashboard refuses the downgrade too", s == 422)
+        s, o = api.req("GET", "/api/updates")
+        check("rollback still offered after the refused downgrade", o.get("rollback_to") == "0.1.0", str(o.get("rollback_to")))
 
         # 4. manual rollback through the dashboard
         s, _ = api.req("POST", "/api/updates/rollback")
         check("rollback started", s == 202)
-        st = wait_status({"rolled_back", "failed"})
+        st = wait_status({"rolled_back", "failed"}) if s == 202 else status()
         check("rolled back to 0.1.0", st.get("state") == "rolled_back" and version() == "0.1.0", f"{st.get('state')} {st.get('error', '')}")
         check("VPN server running after rollback", wg_running(inst["iface"]))
 

@@ -73,7 +73,7 @@ class SimulatedHost:
             from pathlib import Path
 
             from . import updates
-            st = {"state": "success", "version": p.get("version"), "previous": "0.1.0", "rollback_available": True,
+            st = {"state": "success", "version": p.get("version"), "previous": "0.1.0", "rollback_to": "0.1.0",
                   "updated_at": "2026-01-01T00:00:00+00:00", "log": ["simulated update"]} if p["action"] == "install" else                  {"state": "rolled_back", "manual": True, "running": "0.1.0", "updated_at": "2026-01-01T00:01:00+00:00", "log": []}
             Path(updates.downloads(), "status.json").write_text(json.dumps(st))
             return {"ok": True}

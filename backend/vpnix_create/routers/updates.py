@@ -36,7 +36,7 @@ def overview(_: User = Depends(admin), db: DB = Depends(get_db)):
     st = updates.status()
     return {"current": __version__, "settings": {k: cfg[k] for k in ("repo", "mode", "day", "hour")},
             "check": cache.value if cache else None, "status": st,
-            "rollback_available": st.get("state") == "success" and st.get("rollback_available", False),
+            "rollback_to": st.get("rollback_to") if st.get("state") != "running" else None,
             "downloaded": [v["version"] for v in (cache.value.get("newer", []) if cache else []) if updates.downloaded(v["version"])]}
 
 
@@ -73,9 +73,9 @@ def install(version: str, request: Request, user: User = Depends(admin), db: DB 
 @router.post("/rollback", status_code=202)
 def rollback(request: Request, user: User = Depends(admin), db: DB = Depends(get_db), helper=Depends(get_helper)):
     st = updates.status()
-    if not (st.get("state") == "success" and st.get("rollback_available")):
+    if st.get("state") == "running" or not st.get("rollback_to"):
         raise HTTPException(422, "There is no update to roll back")
     _err(lambda: updates.start(helper, "rollback"))
-    audit.record(db, "system", "update_rollback", user=user, ip=client_ip(request), target=st.get("previous"), from_version=__version__)
+    audit.record(db, "system", "update_rollback", user=user, ip=client_ip(request), target=st.get("rollback_to"), from_version=__version__)
     db.commit()
     return {"started": True}
