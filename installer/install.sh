@@ -14,7 +14,7 @@ DOMAIN=""; ADMIN_USER="admin"
 c_ok=$'\e[32m'; c_err=$'\e[31m'; c_dim=$'\e[2m'; c_b=$'\e[1m'; c_0=$'\e[0m'
 step() { printf '%s==>%s %s\n' "$c_b" "$c_0" "$*"; }
 ok()   { printf '    %s✓%s %s\n' "$c_ok" "$c_0" "$*"; }
-die()  { printf '%s✗ %s%s\n' "$c_err" "$*" "$c_0" >&2; exit 1; }
+die()  { trap - ERR; printf '%s✗ %s%s\n' "$c_err" "$*" "$c_0" >&2; exit 1; }
 trap 'die "Installation failed at line $LINENO. Nothing was removed; fix the error and re-run (the installer is safe to repeat)."' ERR
 
 while [[ $# -gt 0 ]]; do
@@ -63,7 +63,8 @@ install -m 0644 "$SRC/VERSION" "$PREFIX/VERSION"
 "$PREFIX/venv/bin/pip" install -q --upgrade pip
 "$PREFIX/venv/bin/pip" install -q --require-virtualenv -r "$PREFIX/backend/requirements.txt"
 if [[ -d "$SRC/frontend/dist" ]]; then rsync -a --delete "$SRC/frontend/dist/" "$PREFIX/web/"; else die "frontend/dist missing (use a release bundle or run npm run build)"; fi
-chmod -R go-w "$PREFIX"
+# Code is not secret: root-owned, world-readable, never writable by the service (secrets live in $ETC)
+chown -R root:root "$PREFIX"; chmod -R u=rwX,go=rX "$PREFIX"
 cat > /usr/local/sbin/vpnix-create-cli <<'WRAP'
 #!/usr/bin/env bash
 # Root-only administration CLI (runs as the service account with the service configuration).
