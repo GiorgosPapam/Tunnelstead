@@ -90,8 +90,15 @@ Legend: [x] done and tested · [ ] pending · [~] in progress · [!] blocked (re
 - [x] Fixes found on the VPS: scripts lost their exec bit; a refused attempt hid the rollback
 - [x] Tests: 106 backend, 20 browser; real host: update 22/22, ops 23/23, firewall 12/12, WireGuard 27/27, OpenVPN 25/25
 
-## Phase 7: Release
-- [ ] Security hardening pass, CI/CD (tests, lint, types, audit, secrets, SAST), docs, release
+## Phase 7: Release ✅
+- [x] Security audit: pip-audit and npm audit clean, no secrets in git history, systemd exposure (API 1.4, helper 5.7), ports, headers, file permissions
+- [x] Fix: Caddy admin API was reachable by any local user over TCP 2019 → private Unix socket (0700 dir)
+- [x] Fix: OpenAPI description no longer public; webhooks refuse local/link-local targets and redirects
+- [x] uninstall.sh (keeps data by default, --purge, --dry-run; only removes what VPNix Create created)
+- [x] Types: mypy clean (36 files, pydantic plugin); 26 type issues fixed (incl. CA key type check)
+- [x] CI: ruff, mypy, pytest, Playwright, shellcheck, pip-audit, npm audit, gitleaks, CodeQL, Dependabot; release signature verification
+- [x] Docs: README, INSTALL, OPERATIONS, SECURITY, ARCHITECTURE (updated), RELEASING, CONTRIBUTING, CHANGELOG, Apache-2.0 LICENSE
+- [x] Release 1.0.0: signed bundle (dist/), tag v1.0.0 (local), real upgrade 0.1.0 → 1.0.0 on the VPS
 
 ## Blocked
-- (none)
+- Publishing to GitHub (repository, push, release upload): waiting for the owner's approval
