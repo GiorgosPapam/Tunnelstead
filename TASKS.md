@@ -65,9 +65,18 @@ Legend: [x] done and tested · [ ] pending · [~] in progress · [!] blocked (re
 - [x] Read-only view of the full host ruleset; other tables are never modified
 - [x] Tests: 72 backend, 14 browser, real host: firewall 12/12, WireGuard 27/27, OpenVPN 25/25
 
-## Phase 5: Operations
-- [ ] Monitoring charts, logs (structured, filter/search, rotation), notifications
-- [ ] Backup/restore (encrypted, scheduled, retention, preview, integrity)
+## Phase 5: Operations ✅
+- [x] Metrics history every 30 s (CPU, memory, disk, network, clients online; per-server throughput and availability), 30-day retention
+- [x] Monitoring page: 1h / 24h / 7d / 30d charts, outage banner, per-server availability
+- [x] Outage detection: a server that should run but does not is alerted once and audited; recovery too
+- [x] Service logs (journald via helper, allowlisted units only): filter by service, level, period, text; rotation by journald
+- [x] Notifications: https webhook (Slack/Discord/Teams/ntfy) and SMTP e-mail, per-event choice, 6 h repeat suppression, test button
+- [x] Alerts: server down/recovered, client blocked, certificate expiring, disk > 90 %, account locked, firewall rollback, backup ok/failed
+- [x] Encrypted backups (Argon2id + AES-256-GCM, SHA-256 integrity), manual + daily schedule with retention, upload/download
+- [x] Restore with decrypt-and-verify preview, typed confirmation, safety copy, version check, redeploy of servers + firewall, sessions cleared
+- [x] installer/backup.sh and installer/restore.sh (restore onto a new server adopts the backup's secret key)
+- [x] Fix: CSRF token is re-fetched after a page reload (GET /api/auth/csrf)
+- [x] Tests: 91 backend, 18 browser; real host: ops 23/23, firewall 12/12, WireGuard 27/27, OpenVPN 25/25
 
 ## Phase 6: Updates
 - [ ] Signed GitHub releases, checks, notify, install now / schedule, rollback, downgrade protection
