@@ -130,3 +130,17 @@ def test_cli_init_admin_random_password_once(app, db, capsys):
     assert cli(["init-admin"]) == 0 and "already exists" in capsys.readouterr().err  # never a second one
     c = login(app, "root", pw)
     assert c.get("/api/auth/me").json()["must_change_password"] is True
+
+
+def test_csrf_token_survives_page_reload(app, db):
+    from tests.conftest import login, make_user
+    make_user(db, "reload")
+    c = login(app, "reload")
+    issued = c.headers["X-CSRF-Token"]
+    del c.headers["X-CSRF-Token"]  # the reloaded tab has lost it
+    assert c.post("/api/auth/logout").status_code == 403
+    again = c.get("/api/auth/csrf").json()["csrf_token"]
+    assert again == issued
+    c.headers["X-CSRF-Token"] = again
+    assert c.post("/api/auth/logout").status_code in (200, 204)
+    assert c.get("/api/auth/csrf").status_code == 401

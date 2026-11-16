@@ -39,6 +39,7 @@ def test_backup_roundtrip_restores_deleted_server(app, db, helper):
     assert r.status_code == 200, r.text
     assert r.json()["safety_backup"].endswith("pre-restore.vbk") and r.json()["warnings"] == []
     assert any(m == "wg.sync" and p["iface"] == "wg1" for m, p in helper.calls)  # server redeployed
+    assert c.get("/api/auth/me").status_code == 401  # old sessions are not restored
     c2 = login(app, "boss")
     assert [i["name"] for i in c2.get("/api/instances").json()] == ["WG-Primary"]
     assert c2.get("/api/system/audit", params={"q": "backup_restored"}).json()["entries"]

@@ -46,5 +46,5 @@ test("Firewall: invalid rule is rejected", async ({ page }) => {
   await page.getByRole("button", { name: "Add rule" }).click();
   await page.getByLabel("From (optional)").fill("not-an-ip; drop");
   await page.getByRole("button", { name: "Apply rule" }).click();
-  await expect(page.getByRole("dialog").getByRole("alert")).toBeVisible();
+  await expect(page.getByRole("dialog").getByRole("alert")).toContainText(/source/i);
 });

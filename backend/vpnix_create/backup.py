@@ -179,7 +179,10 @@ def write_database(raw: bytes) -> None:
     with tempfile.TemporaryDirectory() as td:
         p = os.path.join(td, "restore.db")
         Path(p).write_bytes(raw)
-        src, dst = sqlite3.connect(p), sqlite3.connect(db_path(), timeout=30)
+        src = sqlite3.connect(p)
+        src.execute("DELETE FROM user_sessions")  # sessions are never restored: everyone signs in again
+        src.commit()
+        dst = sqlite3.connect(db_path(), timeout=30)
         try:
             src.backup(dst)
         finally:

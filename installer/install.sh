@@ -65,6 +65,7 @@ install -d -m 0755 "$PREFIX/helper" && install -m 0644 "$SRC"/helper/{vpnix_crea
 "$PREFIX/venv/bin/pip" install -q --require-virtualenv -r "$PREFIX/backend/requirements.txt"
 if [[ -d "$SRC/frontend/dist" ]]; then rsync -a --delete "$SRC/frontend/dist/" "$PREFIX/web/"; else die "frontend/dist missing (use a release bundle or run npm run build)"; fi
 # Code is not secret: root-owned, world-readable, never writable by the service (secrets live in $ETC)
+install -d -m 0755 "$PREFIX/installer" && install -m 0755 "$SRC"/installer/{backup,restore}.sh "$PREFIX/installer/"
 chown -R root:root "$PREFIX"; chmod -R u=rwX,go=rX "$PREFIX"
 cat > /usr/local/sbin/vpnix-create-cli <<'WRAP'
 #!/usr/bin/env bash

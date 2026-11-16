@@ -2,18 +2,19 @@ import { KeyRound, Monitor, Shield, Trash2, UserPlus, Users } from "lucide-react
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { api, can, fmtDate, Me, setCsrf } from "../api";
 import { Alert, Card, Field, Modal } from "../components/ui";
+import { Backups, Notifications } from "./SettingsOps";
 
 export default function SettingsPage({ me, reload }: { me: Me; reload: () => void }) {
-  const tabs = [{ id: "account", label: "Account & security" }, ...(can(me, "users.manage") ? [{ id: "users", label: "Users & roles" }] : [])];
+  const tabs = [{ id: "account", label: "Account & security" }, ...(can(me, "users.manage") ? [{ id: "users", label: "Users & roles" }, { id: "backups", label: "Backups" }, { id: "notifications", label: "Notifications" }] : [])];
   const [tab, setTab] = useState("account");
   return <>
     <h1 className="text-2xl font-semibold tracking-tight m-0">Settings</h1>
-    <p className="muted m-0 mt-1 mb-5">Your account, two-factor authentication, sessions{can(me, "users.manage") ? " and user management" : ""}</p>
+    <p className="muted m-0 mt-1 mb-5">Your account, two-factor authentication, sessions{can(me, "users.manage") ? ", users, backups and notifications" : ""}</p>
     <div role="tablist" aria-label="Settings sections" className="inline-flex gap-1 p-1 rounded-2xl mb-5" style={{ background: "var(--surface-2)" }}>
       {tabs.map((t) => <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)}
         className={`rounded-xl px-4 py-1.5 text-sm font-medium border-0 cursor-pointer ${tab === t.id ? "bg-[var(--bg-2)] text-[var(--text)] shadow" : "bg-transparent text-[var(--muted)]"}`}>{t.label}</button>)}
     </div>
-    {tab === "account" ? <Account me={me} reload={reload} /> : <UsersAdmin me={me} />}
+    {tab === "account" ? <Account me={me} reload={reload} /> : tab === "users" ? <UsersAdmin me={me} /> : tab === "backups" ? <Backups /> : <Notifications />}
   </>;
 }
 

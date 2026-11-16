@@ -51,3 +51,17 @@ export const fmtAgo = (s: string | null | undefined) => {
   if (sec < 86400) return `${Math.floor(sec / 3600)} h ago`;
   return `${Math.floor(sec / 86400)} d ago`;
 };
+
+/** Upload a file as the raw request body (no multipart), with the same CSRF and error handling as api(). */
+export async function apiUpload<T = unknown>(path: string, file: Blob): Promise<T> {
+  const r = await fetch(path, { method: "POST", credentials: "same-origin", body: file,
+    headers: { "Content-Type": "application/octet-stream", ...(csrf ? { "X-CSRF-Token": csrf } : {}) } });
+  if (!r.ok) {
+    let msg = `Upload failed (${r.status})`;
+    try { const j = await r.json(); if (typeof j.detail === "string") msg = j.detail; } catch { /* not JSON */ }
+    throw new ApiError(r.status, msg);
+  }
+  return r.json();
+}
+
+export const fmtRate = (bps: number | null | undefined) => (bps == null ? "—" : `${fmtBytes(bps)}/s`);

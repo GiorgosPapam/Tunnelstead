@@ -13,6 +13,7 @@ import Servers from "./pages/Servers";
 import ServerDetail from "./pages/ServerDetail";
 import Networks from "./pages/Networks";
 import Firewall from "./pages/Firewall";
+import Monitoring from "./pages/Monitoring";
 
 function useTheme() {
   const [theme, setTheme] = useState(() => { try { return localStorage.getItem("vpnix_theme") ?? "dark"; } catch { return "dark"; } });
@@ -26,7 +27,10 @@ function useTheme() {
 export default function App() {
   const [me, setMe] = useState<Me | null | undefined>(undefined);
   const [theme, toggle] = useTheme();
-  const load = useCallback(() => api<Me>("/api/auth/me").then(setMe).catch(() => setMe(null)), []);
+  // After a reload the in-memory CSRF token is gone: fetch it again for the existing session.
+  const load = useCallback(() => api<Me>("/api/auth/me").then(async (m) => {
+    setCsrf((await api<{ csrf_token: string }>("/api/auth/csrf")).csrf_token); setMe(m);
+  }).catch(() => setMe(null)), []);
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
     const out = () => setMe(null);
@@ -50,7 +54,7 @@ export default function App() {
         <Route path="/clients" element={<Navigate to="/servers" />} />
         <Route path="/networks" element={<Networks me={me} />} />
         <Route path="/firewall" element={<Firewall me={me} />} />
-        <Route path="/monitoring" element={<Upcoming title="Monitoring" phase={5} text="Throughput, connection history and service health charts." />} />
+        <Route path="/monitoring" element={<Monitoring />} />
         <Route path="/logs" element={<Logs me={me} />} />
         <Route path="/updates" element={<Upcoming title="Updates" phase={6} text="Signed GitHub releases with install-now or scheduled updates and automatic rollback." />} />
         <Route path="/settings" element={<SettingsPage me={me} reload={load} />} />

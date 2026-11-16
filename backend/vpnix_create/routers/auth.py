@@ -45,9 +45,17 @@ def _fail(db: DB, u: User) -> None:
                       "after repeated failed sign-ins.", key=u.username)
 
 
+def csrf_for(token: str) -> str:
+    """The CSRF token is derived from the (HttpOnly) session token, so a reloaded tab can ask for it again."""
+    import hashlib
+    import hmac
+    return hmac.new(get_settings().secret_key.encode(), b"csrf:" + token.encode(), hashlib.sha256).hexdigest()
+
+
 def _issue(db: DB, resp: Response, request: Request, u: User, mfa_pending: bool) -> str:
     st = get_settings()
-    token, csrf = new_token(), new_token()
+    token = new_token()
+    csrf = csrf_for(token)
     db.add(UserSession(token_hash=sha256(token), user_id=u.id, csrf_hash=sha256(csrf), mfa_pending=mfa_pending,
                        expires_at=utcnow() + timedelta(minutes=st.session_ttl_minutes), ip=client_ip(request),
                        user_agent=(request.headers.get("user-agent") or "")[:200]))
@@ -117,6 +125,12 @@ def logout(response: Response, request: Request, s: UserSession = Depends(curren
     db.commit()
     response.delete_cookie(COOKIE, path="/")
     return {"ok": True}
+
+
+@router.get("/csrf")
+def get_csrf(request: Request, _: UserSession = Depends(current_session)):
+    """Same-origin only (no CORS), so another site can never read it."""
+    return {"csrf_token": csrf_for(request.cookies[COOKIE])}
 
 
 @router.get("/me", response_model=UserOut)
