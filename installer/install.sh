@@ -25,6 +25,8 @@ while [[ $# -gt 0 ]]; do
     *) die "Unknown option: $1" ;;
   esac
 done
+# Re-runs and updates keep the original --domain (stored by the first install).
+if [[ -z "$DOMAIN" && -f /etc/vpnix-create/install.conf ]]; then DOMAIN="$(sed -n 's/^DOMAIN=//p' /etc/vpnix-create/install.conf)"; fi
 [[ "$ADMIN_USER" =~ ^[a-z0-9][a-z0-9._-]{2,63}$ ]] || die "--admin-user must be 3-64 lowercase letters, digits, . _ -"
 [[ -z "$DOMAIN" || "$DOMAIN" =~ ^[A-Za-z0-9.-]{1,253}$ ]] || die "Invalid --domain"
 
@@ -56,7 +58,8 @@ step "Installing VPNix Create"
 id "$SVC_USER" &>/dev/null || useradd --system --home "$STATE" --shell /usr/sbin/nologin "$SVC_USER"
 install -d -m 0755 "$PREFIX"
 install -d -m 0750 -o root -g "$SVC_USER" "$ETC"
-install -d -m 0750 -o "$SVC_USER" -g "$SVC_USER" "$STATE" "$STATE/backups"
+printf 'DOMAIN=%s\n' "$DOMAIN" > "$ETC/install.conf"; chmod 0640 "$ETC/install.conf"
+install -d -m 0750 -o "$SVC_USER" -g "$SVC_USER" "$STATE" "$STATE/backups" "$STATE/updates"
 rsync -a --delete --exclude .venv --exclude __pycache__ --exclude tests "$SRC/backend/" "$PREFIX/backend/"
 install -m 0644 "$SRC/VERSION" "$PREFIX/VERSION"
 install -d -m 0755 "$PREFIX/helper" && install -m 0644 "$SRC"/helper/{vpnix_create_helper,ovpn_ops}.py "$PREFIX/helper/"
@@ -65,7 +68,10 @@ install -d -m 0755 "$PREFIX/helper" && install -m 0644 "$SRC"/helper/{vpnix_crea
 "$PREFIX/venv/bin/pip" install -q --require-virtualenv -r "$PREFIX/backend/requirements.txt"
 if [[ -d "$SRC/frontend/dist" ]]; then rsync -a --delete "$SRC/frontend/dist/" "$PREFIX/web/"; else die "frontend/dist missing (use a release bundle or run npm run build)"; fi
 # Code is not secret: root-owned, world-readable, never writable by the service (secrets live in $ETC)
-install -d -m 0755 "$PREFIX/installer" && install -m 0755 "$SRC"/installer/{backup,restore}.sh "$PREFIX/installer/"
+# The installer itself is kept in $PREFIX so an update can be rolled back to exactly this version.
+rsync -a --delete "$SRC/installer/" "$PREFIX/installer/"
+install -d -m 0755 "$PREFIX/updater" && install -m 0644 "$SRC/updater/updater.py" "$PREFIX/updater/"
+install -m 0644 "$SRC/installer/release-key.pub" "$PREFIX/release-key.pub"
 chown -R root:root "$PREFIX"; chmod -R u=rwX,go=rX "$PREFIX"
 cat > /usr/local/sbin/vpnix-create-cli <<'WRAP'
 #!/usr/bin/env bash
@@ -100,7 +106,8 @@ ADMIN_PW="$(sed -n 's/^VPNIX_ADMIN_PASSWORD=//p' <<<"$ADMIN_OUT")"
 
 # ---------- 11-12: services and web server ----------
 step "Starting services"
-install -m 0644 "$SRC"/installer/systemd/vpnix-create-{api,helper}.service /etc/systemd/system/
+install -m 0644 "$SRC"/installer/systemd/vpnix-create-{api,helper}.service "$SRC"/installer/systemd/vpnix-create-updater@.service /etc/systemd/system/
+install -d -m 0700 /var/backups/vpnix-create
 systemctl daemon-reload
 systemctl enable vpnix-create-helper vpnix-create-api >/dev/null 2>&1
 systemctl restart vpnix-create-helper vpnix-create-api   # pick up new code on re-runs

@@ -151,6 +151,30 @@ def scheduled_backup(db: DB) -> str | None:
         return None
 
 
+def update_result(db: DB) -> None:
+    """Report the outcome of an update once (the updater only writes a status file)."""
+    from . import updates
+    st = updates.status()
+    if st.get("state") not in ("success", "rolled_back", "failed"):
+        return
+    seen = db.get(Setting, "update_reported")
+    if seen and seen.value.get("at") == st.get("updated_at"):
+        return
+    if seen:
+        seen.value = {"at": st.get("updated_at")}
+    else:
+        db.add(Setting(key="update_reported", value={"at": st.get("updated_at")}))
+    ok = st["state"] == "success" or (st["state"] == "rolled_back" and st.get("manual"))
+    audit.record(db, "system", f"update_{st['state']}", success=ok, target=st.get("version") or st.get("running"),
+                 error=st.get("error"))
+    db.commit()
+    if st["state"] == "success":
+        notify.notify(db, "update_done", f"Updated from {st.get('previous')} to {st.get('version')}.", key=st.get("updated_at"))
+    elif not st.get("manual"):
+        notify.notify(db, "update_failed", f"Update to {st.get('version')} failed: {st.get('error')}. "
+                      f"Version {st.get('running')} is running.", key=st.get("updated_at"))
+
+
 def enforce(db: DB, helper) -> int:
     """Expired or over-quota clients are removed from the live interface, then marked."""
     now, changed = utcnow(), {}
@@ -192,6 +216,10 @@ async def run_forever(make_db, make_helper) -> None:
                 collect(db, make_helper())
                 host_sample(db)
                 scheduled_backup(db)
+                update_result(db)
+                if n % 20 == 0:  # every ~10 min: periodic check (cached 6 h) and the auto-update window
+                    from . import updates
+                    updates.scheduled(db, make_helper())
                 if n % 120 == 0:
                     prune(db)
                     check_certificates(db)

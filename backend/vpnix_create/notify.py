@@ -28,10 +28,13 @@ EVENTS = {
     "disk_full": "Disk usage is above 90 %",
     "login_locked": "An account was locked after failed sign-ins",
     "firewall_rolled_back": "A firewall change was not kept and was undone",
+    "update_available": "A new VPNix Create version is available",
+    "update_done": "VPNix Create was updated",
+    "update_failed": "An update failed (the previous version keeps running)",
     "backup_ok": "A scheduled backup was created",
     "backup_failed": "A scheduled backup failed",
 }
-DEFAULT_EVENTS = [e for e in EVENTS if e != "backup_ok"]
+DEFAULT_EVENTS = [e for e in EVENTS if e not in ("backup_ok", "update_done")]
 
 
 def get_config(db: DB) -> dict:

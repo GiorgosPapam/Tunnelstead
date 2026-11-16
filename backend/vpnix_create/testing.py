@@ -68,6 +68,15 @@ class SimulatedHost:
         if method == "sys.journal":
             return {"entries": [{"ts": 1763300000, "unit": "vpnix-create-api.service", "priority": 6, "message": "Application startup complete."},
                                 {"ts": 1763300060, "unit": "vpnix-create-helper.service", "priority": 4, "message": "simulated warning"}]}
+        if method == "sys.update":
+            import json
+            from pathlib import Path
+
+            from . import updates
+            st = {"state": "success", "version": p.get("version"), "previous": "0.1.0", "rollback_available": True,
+                  "updated_at": "2026-01-01T00:00:00+00:00", "log": ["simulated update"]} if p["action"] == "install" else                  {"state": "rolled_back", "manual": True, "running": "0.1.0", "updated_at": "2026-01-01T00:01:00+00:00", "log": []}
+            Path(updates.downloads(), "status.json").write_text(json.dumps(st))
+            return {"ok": True}
         if method == "sys.status":
             return {"ipv4_forwarding": True, "ipv6_forwarding": True, "wireguard_tools": True, "nftables": True, "kernel": "simulated"}
         return {"ok": True}

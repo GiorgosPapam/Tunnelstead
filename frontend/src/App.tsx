@@ -8,12 +8,12 @@ import ForcePassword from "./pages/ForcePassword";
 import Overview from "./pages/Overview";
 import Logs from "./pages/Logs";
 import SettingsPage from "./pages/Settings";
-import Upcoming from "./pages/Upcoming";
 import Servers from "./pages/Servers";
 import ServerDetail from "./pages/ServerDetail";
 import Networks from "./pages/Networks";
 import Firewall from "./pages/Firewall";
 import Monitoring from "./pages/Monitoring";
+import Updates from "./pages/Updates";
 
 function useTheme() {
   const [theme, setTheme] = useState(() => { try { return localStorage.getItem("vpnix_theme") ?? "dark"; } catch { return "dark"; } });
@@ -56,7 +56,7 @@ export default function App() {
         <Route path="/firewall" element={<Firewall me={me} />} />
         <Route path="/monitoring" element={<Monitoring />} />
         <Route path="/logs" element={<Logs me={me} />} />
-        <Route path="/updates" element={<Upcoming title="Updates" phase={6} text="Signed GitHub releases with install-now or scheduled updates and automatic rollback." />} />
+        <Route path="/updates" element={<Updates />} />
         <Route path="/settings" element={<SettingsPage me={me} reload={load} />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>

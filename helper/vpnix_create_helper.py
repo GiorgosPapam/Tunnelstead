@@ -411,6 +411,24 @@ def sys_journal(units, lines=200, priority="info", since_hours=24):
     return {"entries": out}
 
 
+UPDATE_VERSION = re.compile(r"^\d{1,4}\.\d{1,4}\.\d{1,4}$")
+
+
+def sys_update(action, version=None):
+    """Start the root updater unit. It verifies the signature itself; nothing here trusts the caller's file."""
+    if action == "install":
+        if not isinstance(version, str) or not UPDATE_VERSION.match(version):
+            raise Invalid("bad version")
+        unit = f"vpnix-create-updater@install-{version}.service"
+    elif action == "rollback" and version is None:
+        unit = "vpnix-create-updater@rollback.service"
+    else:
+        raise Invalid("bad action")
+    run("systemctl", "reset-failed", unit, check=False)
+    run("systemctl", "start", "--no-block", unit)
+    return {"ok": True, "unit": unit}
+
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ovpn_ops  # noqa: E402  (installed next to this file)
 
@@ -429,7 +447,7 @@ METHODS = {
     "ovpn.delete": ovpn_ops.delete, "net.ovpn_interfaces": ovpn_interfaces,
     "fw.apply": fw_apply, "fw.confirm": fw_confirm, "fw.pending": fw_pending, "fw.ruleset": fw_ruleset,
     "fw.show": fw_show, "sys.forwarding": sys_forwarding, "sys.status": sys_status,
-    "sys.journal": sys_journal,
+    "sys.journal": sys_journal, "sys.update": sys_update,
 }
 
 
