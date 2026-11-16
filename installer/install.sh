@@ -59,6 +59,7 @@ install -d -m 0750 -o root -g "$SVC_USER" "$ETC"
 install -d -m 0750 -o "$SVC_USER" -g "$SVC_USER" "$STATE" "$STATE/backups"
 rsync -a --delete --exclude .venv --exclude __pycache__ --exclude tests "$SRC/backend/" "$PREFIX/backend/"
 install -m 0644 "$SRC/VERSION" "$PREFIX/VERSION"
+install -d -m 0755 "$PREFIX/helper" && install -m 0644 "$SRC/helper/vpnix_create_helper.py" "$PREFIX/helper/"
 [[ -d "$PREFIX/venv" ]] || python3 -m venv "$PREFIX/venv"
 "$PREFIX/venv/bin/pip" install -q --upgrade pip
 "$PREFIX/venv/bin/pip" install -q --require-virtualenv -r "$PREFIX/backend/requirements.txt"
@@ -98,9 +99,13 @@ ADMIN_PW="$(sed -n 's/^VPNIX_ADMIN_PASSWORD=//p' <<<"$ADMIN_OUT")"
 
 # ---------- 11-12: services and web server ----------
 step "Starting services"
-install -m 0644 "$SRC/installer/systemd/vpnix-create-api.service" /etc/systemd/system/
+install -m 0644 "$SRC"/installer/systemd/vpnix-create-{api,helper}.service /etc/systemd/system/
 systemctl daemon-reload
-systemctl enable --now vpnix-create-api >/dev/null 2>&1
+systemctl enable vpnix-create-helper vpnix-create-api >/dev/null 2>&1
+systemctl restart vpnix-create-helper vpnix-create-api   # pick up new code on re-runs
+for _ in $(seq 10); do [[ -S /run/vpnix-create/helper.sock ]] && break; sleep 1; done
+[[ -S /run/vpnix-create/helper.sock ]] || die "Privileged helper did not start: journalctl -u vpnix-create-helper"
+ok "Privileged helper running (socket 0660 root:$SVC_USER)"
 SITE="${DOMAIN:-$(ip -4 route get 1.1.1.1 | awk '{for(i=1;i<NF;i++) if($i=="src") print $(i+1)}')}"
 TLS_LINE=$([[ -n "$DOMAIN" ]] && echo "" || echo "tls internal")
 if [[ -f /etc/caddy/Caddyfile ]] && ! grep -q "Managed by VPNix Create" /etc/caddy/Caddyfile && [[ -s /etc/caddy/Caddyfile ]] \

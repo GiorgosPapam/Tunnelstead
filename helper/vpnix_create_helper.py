@@ -1,0 +1,314 @@
+#!/usr/bin/env python3
+"""vpnix-create-helper: the ONLY VPNix Create component that runs as root.
+
+Listens on /run/vpnix-create/helper.sock (0660 root:vpnix-create) and serves a fixed allowlist of operations.
+Rules enforced here, independently of the API:
+  * every argument is validated (interface names, ports, keys, CIDRs, addresses) before anything happens;
+  * external programs are run with argv lists only, never a shell;
+  * WireGuard operations only touch interfaces whose config file carries the VPNix Create marker, so
+    pre-existing, hand-made WireGuard setups are never modified (module isolation);
+  * firewall operations only replace the application's own nftables table.
+Standard library only, so the privileged code has no third-party dependencies.
+"""
+import base64
+import ipaddress
+import json
+import os
+import re
+import socketserver
+import subprocess
+import sys
+
+SOCKET = os.environ.get("VPNIX_HELPER_SOCKET", "/run/vpnix-create/helper.sock")
+WG_DIR = "/etc/wireguard"
+MARKER = "# Managed by VPNix Create - do not edit by hand"
+NFT_TABLE = "vpnix_create"
+WG_IFACE = re.compile(r"^wg[0-9]{1,3}$")
+ANY_IFACE = re.compile(r"^[a-zA-Z0-9_.:-]{1,15}$")
+BIN = {"wg": "/usr/bin/wg", "wg-quick": "/usr/bin/wg-quick", "ip": "/usr/sbin/ip", "ss": "/usr/bin/ss",
+       "nft": "/usr/sbin/nft", "systemctl": "/usr/bin/systemctl", "sysctl": "/usr/sbin/sysctl"}
+
+
+class Invalid(ValueError):
+    pass
+
+
+# ---------------------------------------------------------------- validation
+def v_wg_iface(x):
+    if not isinstance(x, str) or not WG_IFACE.match(x):
+        raise Invalid("WireGuard interface must look like wg0 … wg999")
+    return x
+
+
+def v_iface(x):
+    if not isinstance(x, str) or not ANY_IFACE.match(x):
+        raise Invalid("bad interface name")
+    return x
+
+
+def v_port(x):
+    if isinstance(x, int) and not isinstance(x, bool) and 1 <= x <= 65535:
+        return x
+    raise Invalid("bad port")
+
+
+def v_key(x):
+    try:
+        if isinstance(x, str) and len(base64.b64decode(x, validate=True)) == 32:
+            return x
+    except ValueError:
+        pass
+    raise Invalid("bad key")
+
+
+def v_ifaddr(x):
+    return str(ipaddress.ip_interface(x))
+
+
+def v_host_cidr(x):
+    n = ipaddress.ip_network(x, strict=True)
+    if n.prefixlen != n.max_prefixlen:
+        raise Invalid("peer AllowedIPs on the server must be single addresses")
+    return str(n)
+
+
+def v_net(x):
+    return str(ipaddress.ip_network(x, strict=True))
+
+
+def run(name, *args, stdin=None, check=True):
+    r = subprocess.run([BIN[name], *args], input=stdin, capture_output=True, text=True, timeout=30)
+    if check and r.returncode:
+        raise RuntimeError(f"{name} failed: {(r.stderr or r.stdout).strip()[:300]}")
+    return r
+
+
+def _conf_path(iface):
+    return os.path.join(WG_DIR, f"{iface}.conf")
+
+
+def _managed(iface) -> bool:
+    try:
+        with open(_conf_path(iface)) as f:
+            return f.readline().rstrip("\n") == MARKER
+    except FileNotFoundError:
+        return False
+
+
+def _require_managed_or_free(iface):
+    exists = os.path.exists(_conf_path(iface)) or run("ip", "link", "show", iface, check=False).returncode == 0
+    if exists and not _managed(iface):
+        raise Invalid(f"{iface} exists and is not managed by VPNix Create; refusing to touch it")
+
+
+def _write_secret(path, content):
+    tmp = path + ".tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(content)
+    os.replace(tmp, path)
+
+
+# ---------------------------------------------------------------- network facts
+def net_interfaces():
+    out = json.loads(run("ip", "-j", "addr").stdout or "[]")
+    route = run("ip", "-j", "route", "show", "default", check=False).stdout
+    default = (json.loads(route or "[]") or [{}])[0].get("dev")
+    return {"default": default, "interfaces": [
+        {"name": i["ifname"], "up": "UP" in i.get("flags", []), "managed_wg": _managed(i["ifname"]),
+         "addresses": [f"{a['local']}/{a['prefixlen']}" for a in i.get("addr_info", [])]}
+        for i in out if i["ifname"] != "lo"]}
+
+
+def net_port_in_use(port, transport):
+    port = v_port(port)
+    if transport not in ("udp", "tcp"):
+        raise Invalid("transport must be udp or tcp")
+    r = run("ss", "-H", "-ln", "-u" if transport == "udp" else "-t", f"sport = :{port}", check=False)
+    return {"in_use": bool(r.stdout.strip())}
+
+
+def net_wg_interfaces():
+    """Every WireGuard interface on the host (managed or not), for conflict detection."""
+    names = set(run("wg", "show", "interfaces", check=False).stdout.split())
+    if os.path.isdir(WG_DIR):
+        names |= {f[:-5] for f in os.listdir(WG_DIR) if f.endswith(".conf")}
+    return {"interfaces": [{"name": n, "managed": _managed(n)} for n in sorted(names)]}
+
+
+# ---------------------------------------------------------------- WireGuard
+def wg_sync(iface, listen_port, private_key, addresses, mtu, peers):
+    """Write the complete desired state and apply it live with `wg syncconf` (no reconnect for others)."""
+    iface, listen_port, private_key = v_wg_iface(iface), v_port(listen_port), v_key(private_key)
+    addresses = [v_ifaddr(a) for a in addresses][:4]
+    if not addresses or not (isinstance(mtu, int) and 1280 <= mtu <= 1500):
+        raise Invalid("addresses and MTU 1280-1500 required")
+    if not isinstance(peers, list) or len(peers) > 5000:
+        raise Invalid("bad peer list")
+    lines = [MARKER, "[Interface]", f"PrivateKey = {private_key}", f"ListenPort = {listen_port}",
+             f"Address = {', '.join(addresses)}", f"MTU = {mtu}", ""]
+    for p in peers:
+        lines += ["[Peer]", f"PublicKey = {v_key(p['public_key'])}"]
+        if p.get("preshared_key"):
+            lines.append(f"PresharedKey = {v_key(p['preshared_key'])}")
+        lines += [f"AllowedIPs = {', '.join(v_host_cidr(a) for a in p['allowed_ips'][:4])}", ""]
+    _require_managed_or_free(iface)  # only after every input has been validated
+    os.makedirs(WG_DIR, mode=0o700, exist_ok=True)
+    _write_secret(_conf_path(iface), "\n".join(lines))
+    if run("ip", "link", "show", iface, check=False).returncode == 0:
+        stripped = run("wg-quick", "strip", iface).stdout
+        run("wg", "syncconf", iface, "/dev/stdin", stdin=stripped)
+        shown = json.loads(run("ip", "-j", "addr", "show", iface).stdout)
+        live = {a["local"] + "/" + str(a["prefixlen"]) for i in shown for a in i.get("addr_info", [])}
+        for a in addresses:  # addresses/MTU may have changed
+            if a not in live:
+                run("ip", "address", "add", a, "dev", iface)
+        run("ip", "link", "set", "dev", iface, "mtu", str(mtu))
+    return {"ok": True, "peers": len(peers)}
+
+
+def wg_service(iface, action):
+    iface = v_wg_iface(iface)
+    if action not in ("start", "stop", "restart", "enable", "disable", "status"):
+        raise Invalid("bad action")
+    if not _managed(iface):
+        raise Invalid(f"{iface} is not managed by VPNix Create")
+    unit = f"wg-quick@{iface}.service"
+    if action == "status":
+        return {"active": run("systemctl", "is-active", unit, check=False).stdout.strip() == "active",
+                "enabled": run("systemctl", "is-enabled", unit, check=False).stdout.strip() == "enabled"}
+    run("systemctl", action, unit)
+    return {"ok": True}
+
+
+def wg_delete(iface):
+    iface = v_wg_iface(iface)
+    if not _managed(iface):
+        if not os.path.exists(_conf_path(iface)):
+            return {"ok": True, "note": "already gone"}
+        raise Invalid(f"{iface} is not managed by VPNix Create")
+    run("systemctl", "disable", "--now", f"wg-quick@{iface}.service", check=False)
+    run("ip", "link", "del", "dev", iface, check=False)
+    os.unlink(_conf_path(iface))
+    return {"ok": True}
+
+
+def wg_dump(iface):
+    iface = v_wg_iface(iface)
+    r = run("wg", "show", iface, "dump", check=False)
+    if r.returncode:
+        return {"running": False, "peers": []}
+    peers = []
+    for ln in r.stdout.strip().splitlines()[1:]:
+        pub, _psk, endpoint, _allowed, hs, rx, tx, _ka = ln.split("\t")
+        peers.append({"public_key": pub, "endpoint": None if endpoint == "(none)" else endpoint,
+                      "latest_handshake": int(hs) or None, "rx_bytes": int(rx), "tx_bytes": int(tx)})
+    return {"running": True, "peers": peers}
+
+
+# ---------------------------------------------------------------- firewall / routing
+def fw_apply(instances, egress=None):
+    """Replace ONLY the application's own nftables table, atomically. Never touches other tables.
+    instances: [{iface, port, transport, subnets[], nat: bool, isolate_clients: bool}]"""
+    if not isinstance(instances, list) or len(instances) > 256:
+        raise Invalid("bad instance list")
+    egress = v_iface(egress) if egress else None
+    accept_in, fwd, nat = [], [], []
+    for i in instances:
+        iface, port = v_wg_iface(i["iface"]), v_port(i["port"])
+        proto = i.get("transport", "udp")
+        if proto not in ("udp", "tcp"):
+            raise Invalid("bad transport")
+        nets = [v_net(n) for n in i.get("subnets", [])][:4]
+        accept_in.append(f"    {proto} dport {port} accept")
+        if not i.get("isolate_clients", True):
+            fwd.append(f'    iifname "{iface}" oifname "{iface}" accept')
+        fwd.append(f'    iifname "{iface}" oifname != "{iface}" accept')
+        if i.get("nat") and egress:
+            for n in nets:
+                fam = "ip" if ipaddress.ip_network(n).version == 4 else "ip6"
+                nat.append(f'    {fam} saddr {n} oifname "{egress}" masquerade')
+    rules = "\n".join([
+        f"table inet {NFT_TABLE}", f"delete table inet {NFT_TABLE}", f"table inet {NFT_TABLE} {{",
+        "  chain input {", "    type filter hook input priority 0; policy accept;", *accept_in, "  }",
+        "  chain forward {", "    type filter hook forward priority 0; policy accept;",
+        "    ct state established,related accept", *fwd,
+        '    iifname "wg*" drop  # anything else from a managed tunnel (e.g. client-to-client) is refused', "  }",
+        "  chain postrouting {", "    type nat hook postrouting priority 100;", *nat, "  }", "}"])
+    run("nft", "-c", "-f", "-", stdin=rules)  # dry-run check first: an invalid ruleset changes nothing
+    run("nft", "-f", "-", stdin=rules)
+    return {"ok": True, "rules": len(accept_in) + len(fwd) + len(nat)}
+
+
+def fw_show():
+    r = run("nft", "list", "table", "inet", NFT_TABLE, check=False)
+    return {"ruleset": r.stdout if r.returncode == 0 else ""}
+
+
+def sys_forwarding(ipv4=True, ipv6=True):
+    conf = []
+    if ipv4:
+        run("sysctl", "-qw", "net.ipv4.ip_forward=1")
+        conf.append("net.ipv4.ip_forward=1")
+    if ipv6:
+        run("sysctl", "-qw", "net.ipv6.conf.all.forwarding=1")
+        conf.append("net.ipv6.conf.all.forwarding=1")
+    _write_secret("/etc/sysctl.d/90-vpnix-create.conf", "\n".join(conf) + "\n")
+    os.chmod("/etc/sysctl.d/90-vpnix-create.conf", 0o644)
+    return {"ok": True}
+
+
+def sys_status():
+    v4 = open("/proc/sys/net/ipv4/ip_forward").read().strip() == "1"
+    v6 = open("/proc/sys/net/ipv6/conf/all/forwarding").read().strip() == "1"
+    return {"ipv4_forwarding": v4, "ipv6_forwarding": v6, "wireguard_tools": os.path.exists(BIN["wg"]),
+            "nftables": os.path.exists(BIN["nft"]), "kernel": os.uname().release}
+
+
+METHODS = {
+    "net.interfaces": net_interfaces, "net.port_in_use": net_port_in_use, "net.wg_interfaces": net_wg_interfaces,
+    "wg.sync": wg_sync, "wg.service": wg_service, "wg.delete": wg_delete, "wg.dump": wg_dump,
+    "fw.apply": fw_apply, "fw.show": fw_show, "sys.forwarding": sys_forwarding, "sys.status": sys_status,
+}
+
+
+def dispatch(raw: bytes) -> dict:
+    try:
+        req = json.loads(raw)
+        fn = METHODS.get(req.get("method"))
+        if fn is None:
+            return {"error": "unknown method"}
+        params = req.get("params") or {}
+        if not isinstance(params, dict):
+            return {"error": "params must be an object"}
+        return {"result": fn(**params)}
+    except (Invalid, TypeError, ValueError, KeyError) as e:
+        return {"error": f"invalid request: {e}"}
+    except (RuntimeError, OSError, subprocess.SubprocessError) as e:
+        return {"error": str(e)}
+
+
+class Handler(socketserver.StreamRequestHandler):
+    def handle(self):
+        self.wfile.write(json.dumps(dispatch(self.rfile.readline(1 << 20))).encode() + b"\n")
+
+
+def main():
+    if os.geteuid() != 0:
+        sys.exit("vpnix-create-helper must run as root")
+    import grp
+    gid = grp.getgrnam("vpnix-create").gr_gid
+    rundir = os.path.dirname(SOCKET)
+    os.makedirs(rundir, exist_ok=True)
+    os.chown(rundir, 0, gid)
+    os.chmod(rundir, 0o750)  # noqa: S103  # nosec B103 (service group may traverse; others nothing)
+    if os.path.exists(SOCKET):
+        os.unlink(SOCKET)
+    srv = socketserver.ThreadingUnixStreamServer(SOCKET, Handler)
+    os.chown(SOCKET, 0, gid)
+    os.chmod(SOCKET, 0o660)  # noqa: S103  # nosec B103 (root + service group only)
+    srv.serve_forever()
+
+
+if __name__ == "__main__":
+    main()

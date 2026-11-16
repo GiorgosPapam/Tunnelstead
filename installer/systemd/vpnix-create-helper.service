@@ -1,0 +1,29 @@
+[Unit]
+Description=VPNix Create privileged helper (fixed operation allowlist)
+After=network-online.target
+Before=vpnix-create-api.service
+
+[Service]
+ExecStart=/usr/bin/python3 -I /opt/vpnix-create/helper/vpnix_create_helper.py
+Restart=on-failure
+# Root is required for WireGuard, nftables, sysctl and wg-quick units, but the filesystem is read-only except
+# the few paths the allowlisted operations need.
+ProtectSystem=strict
+ReadWritePaths=/etc/wireguard /etc/sysctl.d /run
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+SystemCallArchitectures=native
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_CHOWN CAP_FOWNER CAP_DAC_OVERRIDE CAP_SYS_ADMIN CAP_SYS_MODULE
+
+[Install]
+WantedBy=multi-user.target

@@ -11,6 +11,7 @@ from .. import __version__, audit
 from ..db import get_db
 from ..deps import require
 from ..models import AuditEntry, User, utcnow
+from .vpn import vpn_summary
 
 router = APIRouter(prefix="/api/system", tags=["system"])
 _net_prev: dict = {}
@@ -46,8 +47,7 @@ def overview(_: User = Depends(require("view")), db: DB = Depends(get_db)):
         AuditEntry.ts > utcnow() - timedelta(days=1)))
     return {
         "version": __version__,
-        # VPN counters arrive with the WireGuard engine in Phase 2; reported as null, never faked.
-        "instances": None, "clients": None,
+        "vpn": vpn_summary(None, db),
         "audit_chain_ok": ok, "audit_first_bad": bad, "failed_logins_24h": failed_24h,
         "metrics": metrics(),
         "recent_events": [{"ts": e.ts, "actor": e.actor, "category": e.category, "action": e.action,

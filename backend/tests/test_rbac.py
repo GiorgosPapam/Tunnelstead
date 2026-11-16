@@ -58,8 +58,8 @@ def test_admin_user_lifecycle(app, db):
     assert audit["chain_ok"] and {e["action"] for e in audit["entries"]} >= {"user_create", "user_delete"}
 
 
-def test_overview_reports_real_metrics_and_no_fake_vpn_numbers(app, db):
+def test_overview_reports_real_metrics(app, db):
     make_user(db, "boss")
     o = login(app, "boss").get("/api/system/overview").json()
     assert o["metrics"]["mem_total"] > 0 and o["metrics"]["cpu_count"] >= 1
-    assert o["instances"] is None and o["clients"] is None  # not implemented yet: never invented
+    assert o["vpn"] == {"instances": 0, "running": 0, "stopped": 0, "clients": 0, "connected": 0, "rx_bytes": 0, "tx_bytes": 0}

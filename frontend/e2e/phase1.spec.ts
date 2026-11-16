@@ -28,7 +28,7 @@ test.describe.serial("Phase 1", () => {
     await page.getByRole("button", { name: "Save and continue" }).click();
     await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
     await expect(page.getByRole("progressbar", { name: "Memory" })).toBeVisible();  // real metrics rendered
-    await expect(page.getByText("WireGuard engine arrives in phase 2")).toBeVisible();  // honest, not faked
+    await expect(page.getByText("0 running · 0 stopped")).toBeVisible();  // real VPN counters
   });
 
   test("top navigation reaches every section", async ({ page }) => {

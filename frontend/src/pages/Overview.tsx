@@ -2,10 +2,11 @@ import { Activity, ArrowDownLeft, ArrowUpRight, Cpu, HardDrive, MemoryStick, Ser
 import { ReactNode, useEffect, useState } from "react";
 import { api, fmtBytes, fmtDate } from "../api";
 import { Alert, Card, Spinner } from "../components/ui";
+import { Onboarding } from "../components/Onboarding";
 
 type M = { cpu_percent: number; cpu_count: number; load: number[]; mem_total: number; mem_used: number; disk_total: number;
   disk_used: number; net_rx_total: number; net_tx_total: number; net_rate: { rx: number; tx: number } | null; uptime_s: number };
-type O = { version: string; instances: number | null; clients: number | null; audit_chain_ok: boolean; failed_logins_24h: number;
+type O = { version: string; vpn: { instances: number; running: number; stopped: number; clients: number; connected: number; rx_bytes: number; tx_bytes: number }; audit_chain_ok: boolean; failed_logins_24h: number;
   metrics: M; recent_events: { ts: string; actor: string | null; category: string; action: string; success: boolean; ip: string | null }[] };
 
 function Meter({ label, icon, pct, detail }: { label: string; icon: ReactNode; pct: number; detail: string }) {
@@ -30,7 +31,7 @@ function Stat({ label, value, hint, icon }: { label: string; value: ReactNode; h
 
 const uptime = (s: number) => `${Math.floor(s / 86400)}d ${Math.floor((s % 86400) / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
 
-export default function Overview() {
+export default function Overview({ isAdmin }: { isAdmin: boolean }) {
   const [o, setO] = useState<O | null>(null); const [err, setErr] = useState<string | null>(null);
   useEffect(() => {
     const load = () => api<O>("/api/system/overview").then((r) => { setO(r); setErr(null); }).catch((e) => setErr(e.message));
@@ -44,6 +45,7 @@ export default function Overview() {
         <p className="muted m-0 mt-1">Live from this server · version {o.version} · up {uptime(m.uptime_s)}</p></div>
     </div>
     <Alert>{err}</Alert>
+    {isAdmin && (o.vpn.instances === 0 || o.vpn.clients === 0) && <Onboarding instances={o.vpn.instances} clients={o.vpn.clients} />}
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 mb-3">
       <Meter label="CPU" icon={<Cpu size={16} aria-hidden="true" />} pct={m.cpu_percent} detail={`${m.cpu_count} cores · load ${m.load.map((l) => l.toFixed(2)).join(" / ")}`} />
       <Meter label="Memory" icon={<MemoryStick size={16} aria-hidden="true" />} pct={(m.mem_used / m.mem_total) * 100} detail={`${fmtBytes(m.mem_used)} of ${fmtBytes(m.mem_total)}`} />
@@ -56,9 +58,10 @@ export default function Overview() {
         <p className="muted text-xs mt-2 mb-0">Since boot: ↓ {fmtBytes(m.net_rx_total)} · ↑ {fmtBytes(m.net_tx_total)}</p>
       </div>
     </div>
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 mb-6">
-      <Stat label="VPN instances" icon={<Server size={15} aria-hidden="true" />} value={o.instances ?? "—"} hint={o.instances == null ? "WireGuard engine arrives in phase 2" : undefined} />
-      <Stat label="VPN clients" icon={<Users size={15} aria-hidden="true" />} value={o.clients ?? "—"} hint={o.clients == null ? "Client management arrives in phase 2" : undefined} />
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5 mb-6">
+      <Stat label="VPN instances" icon={<Server size={15} aria-hidden="true" />} value={o.vpn.instances} hint={`${o.vpn.running} running · ${o.vpn.stopped} stopped`} />
+      <Stat label="VPN clients" icon={<Users size={15} aria-hidden="true" />} value={o.vpn.clients} hint={`${o.vpn.connected} connected now`} />
+      <Stat label="VPN traffic" icon={<Activity size={15} aria-hidden="true" />} value={fmtBytes(o.vpn.rx_bytes + o.vpn.tx_bytes)} hint={`↓ ${fmtBytes(o.vpn.tx_bytes)} to clients · ↑ ${fmtBytes(o.vpn.rx_bytes)} from clients`} />
       <Stat label="Failed sign-ins (24 h)" icon={<ShieldAlert size={15} aria-hidden="true" />} value={o.failed_logins_24h} />
       <Stat label="Audit trail" icon={<ShieldCheck size={15} aria-hidden="true" />} value={o.audit_chain_ok ? "Intact" : "Tampered"} hint={o.audit_chain_ok ? "Hash chain verified" : "An entry was modified"} />
     </div>

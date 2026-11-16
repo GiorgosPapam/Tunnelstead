@@ -1,5 +1,5 @@
 target-version = "py312"
-line-length = 120
+line-length = 130
 
 [lint]
 select = ["E", "F", "W", "B", "S", "I", "UP"]
@@ -9,3 +9,5 @@ ignore = ["B008"]  # FastAPI Depends() defaults are the framework idiom
 "backend/tests/**" = ["S101", "S105", "S106", "E402"]
 "backend/migrations/**" = ["E501", "W291", "I001"]
 "helper/*.py" = ["S603"]  # argv lists only, never shell=True
+"backend/vpnix_create/testing.py" = ["E501"]
+"backend/tests/conftest.py" = ["E501"]

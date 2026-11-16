@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     session_idle_minutes: int = 60
     login_max_failures: int = 5
     login_lockout_seconds: int = 900
+    auth_rate_per_minute: int = 10  # per client IP, for sign-in / 2FA / password-change endpoints
     helper_socket: str = "/run/vpnix-create/helper.sock"
     background_jobs: bool = True
 

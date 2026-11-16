@@ -32,7 +32,7 @@ class RateLimiter:
         q.append(now)
 
 
-auth_limiter = RateLimiter(10, 60)
+auth_limiter = RateLimiter(get_settings().auth_rate_per_minute, 60)
 
 
 def client_ip(request: Request) -> str:

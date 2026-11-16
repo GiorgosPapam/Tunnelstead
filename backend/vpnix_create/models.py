@@ -4,7 +4,19 @@ from __future__ import annotations
 import enum
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, Enum, ForeignKey, Integer, String, Text, false
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Boolean,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    false,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .db import Base
@@ -73,3 +85,77 @@ class AuditEntry(Base):
     meta: Mapped[dict] = mapped_column(JSON, default=dict)
     prev_hash: Mapped[str] = mapped_column(String(64))
     hash: Mapped[str] = mapped_column(String(64))
+
+
+class InstanceState(enum.StrEnum):
+    RUNNING = "running"
+    STOPPED = "stopped"
+
+
+class ClientStatus(enum.StrEnum):
+    ACTIVE = "active"
+    DISABLED = "disabled"
+    REVOKED = "revoked"
+    EXPIRED = "expired"
+    OVER_QUOTA = "over_quota"
+
+
+class VpnInstance(Base):
+    """One VPN server instance: one interface + one listening port, serving many clients."""
+    __tablename__ = "vpn_instances"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(64), unique=True)
+    protocol: Mapped[str] = mapped_column(String(16), default="wireguard")
+    iface: Mapped[str] = mapped_column(String(15), unique=True)
+    listen_port: Mapped[int] = mapped_column(Integer)
+    transport: Mapped[str] = mapped_column(String(3), default="udp")
+    endpoint_host: Mapped[str] = mapped_column(String(253))
+    egress_iface: Mapped[str | None] = mapped_column(String(15), nullable=True)
+    ipv4_cidr: Mapped[str] = mapped_column(String(18))
+    ipv6_cidr: Mapped[str | None] = mapped_column(String(43), nullable=True)
+    dns: Mapped[list] = mapped_column(JSON, default=list)
+    mtu: Mapped[int] = mapped_column(Integer, default=1420)
+    keepalive: Mapped[int] = mapped_column(Integer, default=25)
+    routing_mode: Mapped[str] = mapped_column(String(8), default="full")  # full | split
+    split_routes: Mapped[list] = mapped_column(JSON, default=list)
+    nat: Mapped[bool] = mapped_column(Boolean, default=True)
+    isolate_clients: Mapped[bool] = mapped_column(Boolean, default=True)
+    private_key_enc: Mapped[str] = mapped_column(Text)
+    public_key: Mapped[str] = mapped_column(String(44))
+    state: Mapped[InstanceState] = mapped_column(Enum(InstanceState), default=InstanceState.RUNNING)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Client(Base):
+    __tablename__ = "clients"
+    __table_args__ = (UniqueConstraint("instance_id", "ipv4"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    instance_id: Mapped[int] = mapped_column(ForeignKey("vpn_instances.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(64))
+    description: Mapped[str] = mapped_column(String(500), default="")
+    tags: Mapped[list] = mapped_column(JSON, default=list)
+    public_key: Mapped[str] = mapped_column(String(44), unique=True)
+    private_key_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
+    psk_enc: Mapped[str] = mapped_column(Text)
+    ipv4: Mapped[str] = mapped_column(String(15))
+    ipv6: Mapped[str | None] = mapped_column(String(39), nullable=True)
+    allowed_ips: Mapped[list | None] = mapped_column(JSON, nullable=True)  # client-side routes override
+    dns: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    keepalive: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    status: Mapped[ClientStatus] = mapped_column(Enum(ClientStatus), default=ClientStatus.ACTIVE)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    quota_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    rx_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+    tx_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+    last_handshake: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_endpoint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ClientStat(Base):
+    __tablename__ = "client_stats"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id", ondelete="CASCADE"), index=True)
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    rx_bytes: Mapped[int] = mapped_column(BigInteger)
+    tx_bytes: Mapped[int] = mapped_column(BigInteger)

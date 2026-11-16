@@ -1,7 +1,11 @@
+import asyncio
+import contextlib
+
 from fastapi import FastAPI, Request
 
 from . import __version__
-from .routers import auth, system, users
+from .config import get_settings
+from .routers import auth, system, users, vpn
 
 # Same-origin only: no CORS middleware is installed, so browsers block cross-origin API calls.
 HEADERS = {
@@ -19,9 +23,22 @@ HEADERS = {
 }
 
 
+@contextlib.asynccontextmanager
+async def lifespan(_app: FastAPI):
+    task = None
+    if get_settings().background_jobs:
+        from . import db
+        from .collector import run_forever
+        from .helper_client import Helper
+        task = asyncio.create_task(run_forever(lambda: next(db.get_db()), Helper))
+    yield
+    if task:
+        task.cancel()
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="VPNix Create API", version=__version__, docs_url=None, redoc_url=None,
-                  openapi_url="/api/openapi.json")
+                  openapi_url="/api/openapi.json", lifespan=lifespan)
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next):
@@ -30,7 +47,7 @@ def create_app() -> FastAPI:
             resp.headers.setdefault(k, v)
         return resp
 
-    for r in (auth.router, users.router, system.router):
+    for r in (auth.router, users.router, system.router, vpn.router):
         app.include_router(r)
 
     @app.get("/api/health")

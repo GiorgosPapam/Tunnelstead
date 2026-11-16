@@ -10,7 +10,7 @@ const py = process.env.VPNIX_PYTHON ?? (process.platform === "win32" ? join(back
 const db = join(tmpdir(), "vpnix-create-ui.db").replaceAll("\\", "/");
 for (const f of [db, db + "-wal", db + "-shm"]) rmSync(f, { force: true });
 const env = { ...process.env, VPNIX_DATABASE_URL: `sqlite:///${db}`, VPNIX_SECRET_KEY: randomBytes(32).toString("base64url"),
-  VPNIX_COOKIE_SECURE: "false", VPNIX_BACKGROUND_JOBS: "false" };
+  VPNIX_COOKIE_SECURE: "false", VPNIX_BACKGROUND_JOBS: "false", VPNIX_UI_TEST_HELPER: "1", VPNIX_AUTH_RATE_PER_MINUTE: "500" };
 const run = (args) => spawnSync(py, ["-m", "vpnix_create.cli", ...args], { cwd: backend, env, encoding: "utf8" });
 if (run(["migrate"]).status !== 0) process.exit(1);
 const init = run(["init-admin", "--username", "admin"]);
