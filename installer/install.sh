@@ -73,6 +73,7 @@ rsync -a --delete "$SRC/installer/" "$PREFIX/installer/"
 install -d -m 0755 "$PREFIX/updater" && install -m 0644 "$SRC/updater/updater.py" "$PREFIX/updater/"
 install -m 0644 "$SRC/installer/release-key.pub" "$PREFIX/release-key.pub"
 chown -R root:root "$PREFIX"; chmod -R u=rwX,go=rX "$PREFIX"
+chmod 0755 "$PREFIX"/installer/*.sh
 cat > /usr/local/sbin/vpnix-create-cli <<'WRAP'
 #!/usr/bin/env bash
 # Root-only administration CLI (runs as the service account with the service configuration).
