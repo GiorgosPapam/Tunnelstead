@@ -21,7 +21,8 @@ PASSWORD_CHANGE_ALLOWED = {"/api/auth/me", "/api/auth/password", "/api/auth/logo
 class RateLimiter:
     """Sliding window per key (one API worker; documented limitation for multi-worker setups)."""
     def __init__(self, limit: int, window: float):
-        self.limit, self.window, self.hits = limit, window, defaultdict(deque)
+        self.limit, self.window = limit, window
+        self.hits: defaultdict[str, deque[float]] = defaultdict(deque)
 
     def check(self, key: str) -> None:
         now, q = time.monotonic(), self.hits[key]

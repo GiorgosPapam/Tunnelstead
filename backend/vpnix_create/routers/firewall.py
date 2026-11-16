@@ -3,6 +3,7 @@ if the administrator confirms it from the browser within the window, so a lock-o
 import ipaddress
 import re
 import time
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -20,7 +21,7 @@ view, manage = require("view"), require("firewall.manage")
 ROLLBACK_SECONDS = 60
 COMMENT_RE = re.compile(r"^[A-Za-z0-9 _.,:()-]{0,64}$")
 PRIVATE_V4 = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
-ROUTING_PRESETS = {
+ROUTING_PRESETS: dict[str, dict[str, Any]] = {
     "full": {"label": "Full tunnel", "mode": "full", "routes": [],
              "explain": "All internet traffic (IPv4 and, with an IPv6 subnet, IPv6) goes through the VPN."},
     "vpn_only": {"label": "VPN network only", "mode": "split", "routes": [],

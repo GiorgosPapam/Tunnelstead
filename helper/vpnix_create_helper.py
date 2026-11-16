@@ -18,6 +18,7 @@ import re
 import socketserver
 import subprocess
 import sys
+from typing import Any
 
 SOCKET = os.environ.get("VPNIX_HELPER_SOCKET", "/run/vpnix-create/helper.sock")
 WG_DIR = "/etc/wireguard"
@@ -440,7 +441,7 @@ def ovpn_interfaces():
     return {"interfaces": [{"name": n, "managed": ovpn_ops.managed(n)} for n in sorted(names)]}
 
 
-METHODS = {
+METHODS: dict[str, Any] = {
     "net.interfaces": net_interfaces, "net.port_in_use": net_port_in_use, "net.wg_interfaces": net_wg_interfaces,
     "wg.sync": wg_sync, "wg.service": wg_service, "wg.delete": wg_delete, "wg.dump": wg_dump,
     "ovpn.apply": ovpn_ops.apply, "ovpn.service": ovpn_ops.service, "ovpn.status": ovpn_ops.status,

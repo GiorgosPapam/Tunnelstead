@@ -177,7 +177,7 @@ def update_result(db: DB) -> None:
 
 def enforce(db: DB, helper) -> int:
     """Expired or over-quota clients are removed from the live interface, then marked."""
-    now, changed = utcnow(), {}
+    now, changed = utcnow(), {}  # type: tuple[datetime, dict[int, list[Client]]]
     for c in db.scalars(select(Client).where(Client.status == ClientStatus.ACTIVE)):
         status = (ClientStatus.EXPIRED if c.expires_at and _aware(c.expires_at) <= now else
                   ClientStatus.OVER_QUOTA if c.quota_bytes and c.rx_bytes + c.tx_bytes >= c.quota_bytes else None)

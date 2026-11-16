@@ -236,7 +236,7 @@ class EmailIn(BaseModel):
 
 class NotifyIn(BaseModel):
     webhook_url: str = Field("", max_length=500)
-    email: EmailIn = EmailIn()
+    email: EmailIn = Field(default_factory=EmailIn)
     events: list[str] = Field(default_factory=list, max_length=20)
 
     @field_validator("webhook_url")

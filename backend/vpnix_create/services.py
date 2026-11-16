@@ -1,6 +1,7 @@
 """VPN instance and client logic: validation, conflict detection, recommendations, IP allocation, sync."""
 import ipaddress
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from sqlalchemy import select
@@ -114,8 +115,9 @@ def validate(db: DB, helper, data: dict, exclude_id: int | None = None) -> Check
         except ValueError:
             c.errors[key] = "Not a valid network (example: 10.8.0.0/24)" if version == 4 else "Not a valid IPv6 network"
             continue
-        ula = ipaddress.ip_network("fc00::/7")
-        if net.version != version or not net.is_private or (version == 6 and not net.subnet_of(ula)):
+        ula = ipaddress.IPv6Network("fc00::/7")
+        if net.version != version or not net.is_private or (
+                isinstance(net, ipaddress.IPv6Network) and not net.subnet_of(ula)):
             c.errors[key] = "Use a private range (10.x, 172.16-31.x, 192.168.x)" if version == 4 else "Use a ULA range (fd00::/8)"
         elif version == 4 and not 16 <= net.prefixlen <= 29:
             c.errors[key] = "Use a /16 to /29 network"
@@ -215,7 +217,7 @@ def sync_firewall(db: DB, helper, rollback_seconds: int | None = None) -> dict:
          "isolate_clients": i.isolate_clients, "subnets": [s for s in (i.ipv4_cidr, i.ipv6_cidr) if s]} for i in insts])
 
 
-def resync_all(db: DB, helper, previous: list[tuple[str, str]] = ()) -> list[str]:
+def resync_all(db: DB, helper, previous: Sequence[tuple[str, str]] = ()) -> list[str]:
     """After a restore: make the server match the database. Removes managed interfaces that are no longer in it
     (`previous` = (protocol, iface) pairs that existed before), redeploys every instance and the firewall."""
     from .engines.registry import engine as eng_for

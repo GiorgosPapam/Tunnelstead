@@ -1,0 +1,76 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend (lint, types, tests)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip, cache-dependency-path: backend/requirements.txt }
+      - run: pip install -r backend/requirements.txt ruff mypy
+      - name: Lint (ruff, incl. bandit security rules)
+        run: ruff check .
+      - name: Types (mypy)
+        run: mypy
+      - name: Tests (API, RBAC, helper input validation, updater, migrations)
+        working-directory: backend
+        run: python -m pytest -q
+
+  frontend:
+    name: Web UI (types, build, browser tests)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip, cache-dependency-path: backend/requirements.txt }
+      - run: pip install -r backend/requirements.txt
+      - uses: actions/setup-node@v4
+        with: { node-version: "22", cache: npm, cache-dependency-path: frontend/package-lock.json }
+      - working-directory: frontend
+        run: npm ci
+      - name: Type check and build
+        working-directory: frontend
+        run: npm run build
+      - name: Browser tests (Playwright)
+        working-directory: frontend
+        env: { VPNIX_PYTHON: python }
+        run: |
+          npx playwright install --with-deps chromium
+          npx playwright test
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with: { name: playwright-results, path: frontend/test-results, retention-days: 7 }
+
+  shell:
+    name: Installer scripts (shellcheck)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: shellcheck -S warning installer/*.sh
+
+  security:
+    name: Security (dependency audit, secret scan)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Python dependency audit
+        run: pip install pip-audit && pip-audit -r backend/requirements.txt
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - name: npm dependency audit
+        working-directory: frontend
+        run: npm audit --audit-level=moderate
+      - name: Secret scan (full history)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

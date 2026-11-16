@@ -85,7 +85,7 @@ def check_target(url: str) -> None:
     except OSError as e:
         raise ValueError(f"cannot resolve {host}: {e}") from None
     for a in addrs:
-        ip = ipaddress.ip_address(a.split("%")[0])
+        ip = ipaddress.ip_address(str(a).split("%")[0])
         if ip.is_loopback or ip.is_link_local or ip.is_unspecified or ip.is_multicast:
             raise ValueError(f"webhook target {host} ({ip}) is not allowed")
 
@@ -109,7 +109,7 @@ def _email(cfg: dict, title: str, text: str) -> None:
     port = int(cfg.get("port") or 587)
     ctx = ssl.create_default_context()
     if port == 465:
-        smtp = smtplib.SMTP_SSL(cfg["host"], port, timeout=10, context=ctx)
+        smtp: smtplib.SMTP = smtplib.SMTP_SSL(cfg["host"], port, timeout=10, context=ctx)
     else:
         smtp = smtplib.SMTP(cfg["host"], port, timeout=10)
         if cfg.get("starttls", True):
@@ -154,8 +154,10 @@ def notify(db: DB, event: str, text: str, key: str | None = None) -> bool:
     else:
         db.add(Setting(key="notify_sent", value=sent))
     db.commit()
-    threading.Thread(target=lambda: [log.warning("notification failed: %s", e) for e in deliver(cfg, EVENTS[event], text)],
-                     daemon=True).start()
+    def send() -> None:
+        for e in deliver(cfg, EVENTS[event], text):
+            log.warning("notification failed: %s", e)
+    threading.Thread(target=send, daemon=True).start()
     return True
 
 

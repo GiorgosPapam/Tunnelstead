@@ -105,8 +105,8 @@ def main(argv=None) -> int:
         from .services import resync_all
         db = next(get_db())
         errors = resync_all(db, Helper())
-        for e in errors:
-            print(f"warning: {e}", file=sys.stderr)
+        for w in errors:
+            print(f"warning: {w}", file=sys.stderr)
         print("Server configuration matches the database." if not errors else "Resync finished with warnings.")
         return 1 if errors else 0
     from .models import Role, User

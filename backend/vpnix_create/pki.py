@@ -17,6 +17,13 @@ from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 CA_DAYS, SERVER_DAYS, CLIENT_DAYS = 3650, 1825, 825
 
 
+
+def _ca_key(pem: str) -> ec.EllipticCurvePrivateKey:
+    k = serialization.load_pem_private_key(pem.encode(), None)
+    if not isinstance(k, ec.EllipticCurvePrivateKey):  # every CA VPNix Create makes is ECDSA P-256
+        raise ValueError("unexpected CA key type")
+    return k
+
 def _now():
     return dt.datetime.now(dt.UTC)
 
@@ -49,7 +56,7 @@ def new_ca(label: str) -> tuple[str, str]:
 
 def issue(ca_cert: str, ca_key: str, cn: str, server: bool) -> tuple[str, str]:
     ca = x509.load_pem_x509_certificate(ca_cert.encode())
-    cak = serialization.load_pem_private_key(ca_key.encode(), None)
+    cak = _ca_key(ca_key)
     k = ec.generate_private_key(ec.SECP256R1())
     eku = ExtendedKeyUsageOID.SERVER_AUTH if server else ExtendedKeyUsageOID.CLIENT_AUTH
     c = (x509.CertificateBuilder().subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, cn)]))
@@ -64,7 +71,7 @@ def issue(ca_cert: str, ca_key: str, cn: str, server: bool) -> tuple[str, str]:
 
 def crl(ca_cert: str, ca_key: str, revoked_serials: list[int]) -> str:
     ca = x509.load_pem_x509_certificate(ca_cert.encode())
-    cak = serialization.load_pem_private_key(ca_key.encode(), None)
+    cak = _ca_key(ca_key)
     b = (x509.CertificateRevocationListBuilder().issuer_name(ca.subject).last_update(_now())
          .next_update(_now() + dt.timedelta(days=3650)))
     for s in revoked_serials:
