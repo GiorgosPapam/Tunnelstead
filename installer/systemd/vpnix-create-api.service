@@ -1,0 +1,40 @@
+[Unit]
+Description=VPNix Create API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=vpnix-create
+Group=vpnix-create
+EnvironmentFile=/etc/vpnix-create/vpnix-create.env
+WorkingDirectory=/opt/vpnix-create/backend
+ExecStart=/opt/vpnix-create/venv/bin/uvicorn vpnix_create.main:app --host 127.0.0.1 --port 8090 --proxy-headers --forwarded-allow-ips 127.0.0.1 --no-server-header
+Restart=on-failure
+# Hardening: unprivileged, no capabilities, read-only system, only its state dir writable.
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ReadWritePaths=/var/lib/vpnix-create
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

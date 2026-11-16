@@ -1,0 +1,11 @@
+target-version = "py312"
+line-length = 120
+
+[lint]
+select = ["E", "F", "W", "B", "S", "I", "UP"]
+ignore = ["B008"]  # FastAPI Depends() defaults are the framework idiom
+
+[lint.per-file-ignores]
+"backend/tests/**" = ["S101", "S105", "S106", "E402"]
+"backend/migrations/**" = ["E501", "W291", "I001"]
+"helper/*.py" = ["S603"]  # argv lists only, never shell=True
