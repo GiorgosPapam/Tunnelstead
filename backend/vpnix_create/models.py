@@ -123,6 +123,8 @@ class VpnInstance(Base):
     private_key_enc: Mapped[str] = mapped_column(Text)
     public_key: Mapped[str] = mapped_column(String(44))
     state: Mapped[InstanceState] = mapped_column(Enum(InstanceState), default=InstanceState.RUNNING)
+    ca_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    server_cert_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
@@ -147,6 +149,12 @@ class Client(Base):
     quota_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     rx_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
     tx_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+    # How live statistics identify this client (WireGuard public key / OpenVPN certificate CN).
+    stats_key: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    # OpenVPN reports per-session counters; remember the last sample to accumulate lifetime totals.
+    session_rx: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    session_tx: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    cert_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_handshake: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_endpoint: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -159,3 +167,12 @@ class ClientStat(Base):
     ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
     rx_bytes: Mapped[int] = mapped_column(BigInteger)
     tx_bytes: Mapped[int] = mapped_column(BigInteger)
+
+
+class RetiredCert(Base):
+    """OpenVPN certificates replaced by "regenerate": kept (encrypted) only so they stay on the CRL."""
+    __tablename__ = "retired_certs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    instance_id: Mapped[int] = mapped_column(ForeignKey("vpn_instances.id", ondelete="CASCADE"), index=True)
+    cert_enc: Mapped[str] = mapped_column(Text)
+    retired_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

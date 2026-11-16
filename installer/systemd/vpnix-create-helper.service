@@ -9,7 +9,7 @@ Restart=on-failure
 # Root is required for WireGuard, nftables, sysctl and wg-quick units, but the filesystem is read-only except
 # the few paths the allowlisted operations need.
 ProtectSystem=strict
-ReadWritePaths=/etc/wireguard /etc/sysctl.d /run
+ReadWritePaths=/etc/wireguard /etc/openvpn/server /etc/sysctl.d /run
 ProtectHome=true
 PrivateTmp=true
 ProtectKernelModules=true

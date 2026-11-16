@@ -48,9 +48,13 @@ test.describe.serial("Phase 2: WireGuard", () => {
     await page.screenshot({ path: "test-results/screens/servers.png" });
   });
 
-  test("create a client, see QR, disable it", async ({ page }) => {
+  test("server detail shows info and its clients; create a client, see QR, disable it", async ({ page }) => {
     await signIn(page);
-    await page.getByRole("link", { name: "Clients", exact: true }).click();
+    await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Clients" })).toHaveCount(0);
+    await page.getByRole("link", { name: "VPN Servers", exact: true }).click();
+    await page.getByRole("link", { name: "WG-Primary" }).click();
+    await expect(page.getByRole("heading", { level: 1, name: "WG-Primary" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Server details" }).getByText("vpn.example.org:51820")).toBeVisible();
     await page.getByRole("button", { name: "New client" }).first().click();
     await page.getByLabel("Device name").fill("Maria laptop");
     await page.getByLabel("Tags (optional)").fill("staff, laptop");
@@ -61,9 +65,12 @@ test.describe.serial("Phase 2: WireGuard", () => {
     await page.getByRole("button", { name: "Close dialog" }).click();
     const row = page.getByRole("row", { name: /Maria laptop/ });
     await expect(row.getByText("10.8.0.2")).toBeVisible();
+    await expect(row.getByText("Offline")).toBeVisible();
+    await expect(row.getByText("Last connected never")).toBeVisible();
     await row.getByRole("button", { name: "Disable" }).click();
     await expect(row.getByText("Disabled")).toBeVisible();
-    await page.screenshot({ path: "test-results/screens/clients.png" });
+    await expect(page.getByText("0 of 1", { exact: true })).toBeVisible();  // header stats follow the client list
+    await page.screenshot({ path: "test-results/screens/server-detail.png", fullPage: true });
     await page.getByRole("link", { name: "Overview", exact: true }).click();
     await expect(page.getByRole("region", { name: "Getting started" })).toHaveCount(0);  // onboarding complete
   });

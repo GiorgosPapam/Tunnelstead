@@ -1,29 +1,31 @@
 import { Download, KeyRound, Pencil, Plus, QrCode, Search, Trash2, UserX, Users } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { api, can, fmtBytes, fmtDate, Me } from "../api";
+import { api, can, fmtAgo, fmtBytes, fmtDate, Me } from "../api";
 import { Alert, Empty, Field, Modal, Spinner } from "../components/ui";
 import type { Inst } from "./Servers";
 
 export type Cl = { id: number; instance_id: number; instance_name: string; name: string; description: string; tags: string[];
   public_key: string; ipv4: string; ipv6: string | null; allowed_ips: string[] | null; dns: string[] | null; keepalive: number | null;
   status: string; connected: boolean; expires_at: string | null; quota_bytes: number | null; rx_bytes: number; tx_bytes: number;
-  last_handshake: string | null; last_endpoint: string | null; has_private_key: boolean };
+  last_handshake: string | null; last_endpoint: string | null; has_private_key: boolean; protocol: string;
+  cert_expires_at: string | null; created_at: string };
 
 const STATUS: Record<string, [string, string]> = { active: ["var(--ok)", "Active"], disabled: ["var(--muted)", "Disabled"],
   revoked: ["var(--bad)", "Revoked"], expired: ["var(--warn)", "Expired"], over_quota: ["var(--warn)", "Over quota"] };
 
-export default function Clients({ me }: { me: Me }) {
+// Client table for one VPN server (shown on its detail page). Pass `instance` to scope it.
+export default function Clients({ me, instance, onChange }: { me: Me; instance: Inst; onChange?: () => void }) {
   const [rows, setRows] = useState<Cl[] | null>(null); const [insts, setInsts] = useState<Inst[]>([]);
-  const [q, setQ] = useState(""); const [inst, setInst] = useState(""); const [err, setErr] = useState<string | null>(null);
+  const [q, setQ] = useState(""); const inst = String(instance.id); const [err, setErr] = useState<string | null>(null);
   const [creating, setCreating] = useState(false); const [editing, setEditing] = useState<Cl | null>(null);
   const [showing, setShowing] = useState<Cl | null>(null); const [confirm, setConfirm] = useState<{ c: Cl; action: string } | null>(null);
   const manage = can(me, "clients.manage");
   const load = useCallback(() => {
     const p = new URLSearchParams({ ...(q ? { q } : {}), ...(inst ? { instance_id: inst } : {}) });
-    return api<Cl[]>(`/api/clients?${p}`).then(setRows).catch((e) => setErr(e.message));
-  }, [q, inst]);
+    return api<Cl[]>(`/api/clients?${p}`).then((r) => { setRows(r); onChange?.(); }).catch((e) => setErr(e.message));
+  }, [q, inst, onChange]);
   useEffect(() => { const t = setTimeout(load, 200); return () => clearTimeout(t); }, [load]);
-  useEffect(() => { api<Inst[]>("/api/instances").then(setInsts).catch(() => {}); const t = setInterval(load, 20000); return () => clearInterval(t); }, [load]);
+  useEffect(() => { setInsts([instance]); const t = setInterval(load, 15000); return () => clearInterval(t); }, [load, instance]);
   const act = async (c: Cl, action: string) => {
     setErr(null);
     try { action === "delete" ? await api(`/api/clients/${c.id}`, { method: "DELETE" }) : await api(`/api/clients/${c.id}/${action}`, { method: "POST" }); load(); }
@@ -37,8 +39,9 @@ export default function Clients({ me }: { me: Me }) {
   };
 
   return <>
-    <div className="flex flex-wrap items-end justify-between gap-3 mb-6">
-      <div><h1 className="text-2xl font-semibold tracking-tight m-0">Clients</h1><p className="muted m-0 mt-1">Devices allowed to connect. "Connected" means a WireGuard handshake in the last 3 minutes.</p></div>
+    <div className="flex flex-wrap items-end justify-between gap-3 mb-4 mt-8">
+      <div><h2 className="text-xl font-semibold tracking-tight m-0">Clients <span className="muted font-normal">({rows?.length ?? 0})</span></h2>
+        <p className="muted m-0 mt-1 text-sm">{instance.protocol === "openvpn" ? "Online = an active OpenVPN session right now." : "Online = a WireGuard handshake in the last 3 minutes."}</p></div>
       <div className="flex gap-2"><button className="btn" onClick={exportCsv} disabled={!rows?.length}><Download size={16} aria-hidden="true" />Export</button>
         {manage && <button className="btn btn-primary" onClick={() => setCreating(true)} disabled={!insts.length}><Plus size={16} aria-hidden="true" />New client</button>}</div>
     </div>
@@ -47,28 +50,30 @@ export default function Clients({ me }: { me: Me }) {
       <div className="relative"><Search size={15} className="absolute left-3 top-3 muted" aria-hidden="true" />
         <label htmlFor="cl-q" className="sr-only">Search clients</label>
         <input id="cl-q" className="field !pl-9 !w-72" placeholder="Search name, tag, description, IP" value={q} onChange={(e) => setQ(e.target.value)} /></div>
-      <label htmlFor="cl-inst" className="sr-only">VPN instance</label>
-      <select id="cl-inst" className="field !w-auto" value={inst} onChange={(e) => setInst(e.target.value)}>
-        <option value="">All instances</option>{insts.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}</select>
     </div>
     {!rows ? <Spinner /> : rows.length === 0 ? <Empty icon={<Users size={22} />} title={q || inst ? "No matching clients" : "No clients yet"}
       text={insts.length ? "Create a client for each device. You get a configuration file and a QR code for the WireGuard app." : "Deploy a VPN instance first (VPN Servers)."}
       action={manage && insts.length && !q ? <button className="btn btn-primary" onClick={() => setCreating(true)}><Plus size={16} aria-hidden="true" />New client</button> : undefined} /> :
       <div className="card overflow-x-auto"><table className="w-full text-sm border-collapse">
-        <thead><tr className="muted text-left text-xs uppercase tracking-wide">{["Client", "Status", "Address", "Usage", "Last handshake", "Expires", ""].map((h) =>
+        <thead><tr className="muted text-left text-xs uppercase tracking-wide">{["Client", "Connection", "Status", "Address", "Usage", "Expires", ""].map((h) =>
           <th key={h} scope="col" className="py-3 px-4 font-semibold whitespace-nowrap">{h}</th>)}</tr></thead>
         <tbody>{rows.map((c) => { const [color, label] = STATUS[c.status] ?? ["var(--muted)", c.status]; return <tr key={c.id} className="border-t border-[var(--border)]">
           <td className="py-3 px-4"><div className="font-semibold flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full shrink-0" title={c.connected ? "Connected" : "Not connected"} aria-label={c.connected ? "Connected" : "Not connected"}
-              style={{ background: c.connected ? "var(--ok)" : "var(--border-strong)" }} />{c.name}</div>
-            <div className="muted text-xs">{c.instance_name}{c.description ? ` · ${c.description}` : ""}</div>
+            {c.name}</div>
+            <div className="muted text-xs">{c.description || `added ${fmtDate(c.created_at)}`}</div>
             {c.tags.length > 0 && <div className="flex gap-1 mt-1">{c.tags.map((t) => <span key={t} className="pill !text-[11px]">{t}</span>)}</div>}</td>
+          <td className="py-3 px-4 whitespace-nowrap">
+            <span className="pill" style={{ color: c.connected ? "var(--ok)" : "var(--muted)" }}>
+              <span className={`w-1.5 h-1.5 rounded-full ${c.connected ? "animate-pulse" : ""}`} style={{ background: c.connected ? "var(--ok)" : "var(--border-strong)" }} />
+              {c.connected ? "Online now" : "Offline"}</span>
+            <div className="muted text-xs mt-1">Last connected {fmtAgo(c.last_handshake)}</div>
+            {c.last_endpoint && <div className="muted text-xs">from {c.last_endpoint}</div>}</td>
           <td className="py-3 px-4"><span className="pill" style={{ color }}>{label}</span></td>
           <td className="py-3 px-4"><code className="text-xs">{c.ipv4}</code>{c.ipv6 && <><br /><code className="text-xs muted">{c.ipv6}</code></>}</td>
           <td className="py-3 px-4 tabular-nums whitespace-nowrap">↓ {fmtBytes(c.tx_bytes)} · ↑ {fmtBytes(c.rx_bytes)}
             {c.quota_bytes && <div className="muted text-xs">{Math.min(100, ((c.rx_bytes + c.tx_bytes) / c.quota_bytes) * 100).toFixed(0)}% of {fmtBytes(c.quota_bytes)}</div>}</td>
-          <td className="py-3 px-4 whitespace-nowrap">{fmtDate(c.last_handshake)}{c.last_endpoint && <div className="muted text-xs">{c.last_endpoint}</div>}</td>
-          <td className="py-3 px-4 whitespace-nowrap">{c.expires_at ? fmtDate(c.expires_at) : "Never"}</td>
+          <td className="py-3 px-4 whitespace-nowrap">{c.expires_at ? fmtDate(c.expires_at) : "Never"}
+            {c.cert_expires_at && <div className="muted text-xs">certificate until {new Date(c.cert_expires_at).toLocaleDateString()}</div>}</td>
           <td className="py-3 px-4"><div className="flex gap-1 justify-end">
             {can(me, "clients.manage") && c.status !== "revoked" && c.has_private_key && <button className="btn !p-1.5" title="Config & QR" aria-label={`Configuration for ${c.name}`} onClick={() => setShowing(c)}><QrCode size={16} /></button>}
             {manage && c.status !== "revoked" && <>
@@ -115,7 +120,7 @@ function ClientForm({ insts, client, onClose, onDone }: { insts: Inst[]; client?
   };
   return <Modal title={client ? `Edit ${client.name}` : "New client"} onClose={onClose}><form onSubmit={submit}>
     <Alert>{err}</Alert>
-    {!client && <Field id="cf-inst" label="VPN instance"><select id="cf-inst" className="field" value={f.instance_id} onChange={(e) => setF({ ...f, instance_id: Number(e.target.value) })}>
+    {!client && insts.length > 1 && <Field id="cf-inst" label="VPN instance"><select id="cf-inst" className="field" value={f.instance_id} onChange={(e) => setF({ ...f, instance_id: Number(e.target.value) })}>
       {insts.map((i) => <option key={i.id} value={i.id}>{i.name} ({i.iface}, {i.ipv4_cidr})</option>)}</select></Field>}
     <Field id="cf-name" label="Device name"><input id="cf-name" className="field" required maxLength={64} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="e.g. Maria's laptop" /></Field>
     <Field id="cf-desc" label="Description (optional)"><input id="cf-desc" className="field" maxLength={500} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></Field>
@@ -127,7 +132,7 @@ function ClientForm({ insts, client, onClose, onDone }: { insts: Inst[]; client?
       <Field id="cf-routes" label="Allowed networks (client routes)" hint="Leave empty to use the instance's routing (full or split tunnel). Example: 10.0.0.0/8, 192.168.1.0/24">
         <input id="cf-routes" className="field" value={f.routes} onChange={(e) => setF({ ...f, routes: e.target.value })} /></Field>
       <Field id="cf-dns" label="DNS override" hint="Leave empty to use the instance's DNS."><input id="cf-dns" className="field" value={f.dns} onChange={(e) => setF({ ...f, dns: e.target.value })} /></Field>
-      {!client && <Field id="cf-pub" label="Use my own public key (optional)" hint="If set, the server never sees this device's private key (no download/QR)."><input id="cf-pub" className="field" value={f.public_key} onChange={(e) => setF({ ...f, public_key: e.target.value })} /></Field>}
+      {!client && insts[0]?.protocol !== "openvpn" && <Field id="cf-pub" label="Use my own public key (optional)" hint="If set, the server never sees this device's private key (no download/QR)."><input id="cf-pub" className="field" value={f.public_key} onChange={(e) => setF({ ...f, public_key: e.target.value })} /></Field>}
     </details>
     <div className="flex gap-2 justify-end mt-2"><button type="button" className="btn" onClick={onClose}>Cancel</button><button className="btn btn-primary">{client ? "Save" : "Create client"}</button></div>
   </form></Modal>;
@@ -138,14 +143,16 @@ function ConfigModal({ c, onClose }: { c: Cl; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
   useEffect(() => {
     fetch(`/api/clients/${c.id}/config`, { credentials: "same-origin" }).then(async (r) => r.ok ? setCfg(await r.text()) : setErr((await r.json()).detail)).catch((e) => setErr(String(e)));
-    fetch(`/api/clients/${c.id}/qr`, { credentials: "same-origin" }).then(async (r) => r.ok && setQr(URL.createObjectURL(await r.blob()))).catch(() => {});
+    if (c.protocol !== "openvpn") fetch(`/api/clients/${c.id}/qr`, { credentials: "same-origin" }).then(async (r) => r.ok && setQr(URL.createObjectURL(await r.blob()))).catch(() => {});
   }, [c.id]);
-  const file = `${c.name.replace(/[^A-Za-z0-9_-]+/g, "-")}.conf`;
+  const ovpn = c.protocol === "openvpn";
+  const file = `${c.name.replace(/[^A-Za-z0-9_-]+/g, "-")}.${ovpn ? "ovpn" : "conf"}`;
   return <Modal title={`${c.name}: configuration`} onClose={onClose}>
     <Alert>{err}</Alert>
     <Alert kind="info">This contains the device's private key. Share it only with the device owner.</Alert>
     {qr && <div className="rounded-2xl bg-white p-3 grid place-items-center mb-3"><img src={qr} alt={`WireGuard QR code for ${c.name}`} className="w-full max-w-[300px]" /></div>}
-    <p className="muted text-sm">Phones: scan with the WireGuard app (+ → Scan from QR code). Computers: import the file in the WireGuard app.</p>
+    <p className="muted text-sm">{ovpn ? "Import the .ovpn file in OpenVPN Connect (Windows, macOS, iOS, Android) or run openvpn --config on Linux. OpenVPN profiles are too large for a QR code."
+      : "Phones: scan with the WireGuard app (+ → Scan from QR code). Computers: import the file in the WireGuard app."}</p>
     {cfg && <div className="flex gap-2"><a className="btn btn-primary no-underline" href={URL.createObjectURL(new Blob([cfg], { type: "text/plain" }))} download={file}><Download size={16} aria-hidden="true" />Download {file}</a>
       <button className="btn" onClick={() => { navigator.clipboard?.writeText(cfg); setCopied(true); }}>{copied ? "Copied" : "Copy"}</button></div>}
   </Modal>;

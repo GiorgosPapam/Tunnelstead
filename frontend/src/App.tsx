@@ -10,7 +10,7 @@ import Logs from "./pages/Logs";
 import SettingsPage from "./pages/Settings";
 import Upcoming from "./pages/Upcoming";
 import Servers from "./pages/Servers";
-import Clients from "./pages/Clients";
+import ServerDetail from "./pages/ServerDetail";
 
 function useTheme() {
   const [theme, setTheme] = useState(() => { try { return localStorage.getItem("vpnix_theme") ?? "dark"; } catch { return "dark"; } });
@@ -44,7 +44,8 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Overview isAdmin={me.role === "admin"} />} />
         <Route path="/servers" element={<Servers me={me} />} />
-        <Route path="/clients" element={<Clients me={me} />} />
+        <Route path="/servers/:id" element={<ServerDetail me={me} />} />
+        <Route path="/clients" element={<Navigate to="/servers" />} />
         <Route path="/networks" element={<Upcoming title="Networks" phase={4} text="Full-tunnel and split-tunnel routing, IPv4 and IPv6, NAT and DNS leak checks." />} />
         <Route path="/firewall" element={<Upcoming title="Firewall" phase={4} text="Application-managed nftables rules with validation, preview and automatic rollback." />} />
         <Route path="/monitoring" element={<Upcoming title="Monitoring" phase={5} text="Throughput, connection history and service health charts." />} />

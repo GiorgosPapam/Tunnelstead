@@ -34,7 +34,7 @@ test.describe.serial("Phase 1", () => {
   test("top navigation reaches every section", async ({ page }) => {
     await signIn(page, "admin", NEW_PW);
     const nav = page.getByRole("navigation", { name: "Main" });
-    for (const name of ["VPN Servers", "Clients", "Networks", "Firewall", "Monitoring", "Logs", "Updates", "Settings", "Overview"]) {
+    for (const name of ["VPN Servers", "Networks", "Firewall", "Monitoring", "Logs", "Updates", "Settings", "Overview"]) {
       await nav.getByRole("link", { name, exact: true }).click();
       await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
     }

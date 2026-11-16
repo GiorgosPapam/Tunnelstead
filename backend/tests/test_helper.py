@@ -94,3 +94,39 @@ def test_ui_test_helper_refuses_production_database(monkeypatch):
     monkeypatch.setattr(get_settings(), "database_url", "postgresql+psycopg://x@db/vpnix")
     with pytest.raises(RuntimeError):
         testing.enabled()
+
+
+CERT = "-----BEGIN CERTIFICATE-----\nQUJD\n-----END CERTIFICATE-----\n"
+OVPN = {"iface": "ovpn0", "port": 1194, "proto": "udp", "network": "10.30.0.0/24", "network6": None, "mtu": 1500,
+        "dns": ["1.1.1.1"], "ca": CERT, "cert": CERT, "key": "-----BEGIN PRIVATE KEY-----\nQUJD\n-----END PRIVATE KEY-----\n",
+        "tls_crypt": "-----BEGIN OpenVPN Static key V1-----\nab\n-----END OpenVPN Static key V1-----\n",
+        "crl": "-----BEGIN X509 CRL-----\nQUJD\n-----END X509 CRL-----\n", "clients": []}
+
+
+@pytest.fixture
+def no_fs(monkeypatch):
+    def boom(*a, **k):
+        raise AssertionError("filesystem changed for invalid input")
+    monkeypatch.setattr(helper.ovpn_ops.os, "makedirs", boom)
+    monkeypatch.setattr(helper.ovpn_ops, "_write", boom)
+
+
+@pytest.mark.parametrize("patch", [
+    {"iface": "eth0"}, {"iface": "wg0"}, {"proto": "icmp"}, {"network": "8.8.8.0/24"},
+    {"network6": "2a00:1450::/64"},
+    {"key": OVPN["key"] + "up /bin/sh\n"},                        # directive smuggled after a PEM
+    {"crl": "x"},
+    {"clients": [{"cn": "c" + "0" * 24 + "\nscript-security 3", "ip": "10.30.0.2"}]},  # newline injection
+    {"clients": [{"cn": "../../etc/passwd", "ip": "10.30.0.2"}]},  # path traversal
+    {"clients": [{"cn": "c" + "a" * 24, "ip": "10.99.0.2"}]},     # address outside the pool
+])
+def test_ovpn_apply_rejects_injection_before_writing(no_exec, no_fs, patch):
+    assert "invalid request" in call("ovpn.apply", **{**OVPN, **patch})["error"]
+
+
+def test_ovpn_refuses_foreign_instance(tmp_path, monkeypatch):
+    monkeypatch.setattr(helper.ovpn_ops, "SERVER_DIR", str(tmp_path))
+    (tmp_path / "ovpn0.conf").write_text("port 1194\n")  # someone's own OpenVPN server
+    assert "not managed" in call("ovpn.apply", **OVPN)["error"]
+    assert "not managed" in call("ovpn.delete", iface="ovpn0")["error"]
+    assert (tmp_path / "ovpn0.conf").read_text() == "port 1194\n"

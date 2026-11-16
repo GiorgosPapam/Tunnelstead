@@ -17,7 +17,7 @@ from ..deps import client_ip, require
 from ..engines.registry import ENGINES, engine
 from ..engines.wireguard import valid_key
 from ..helper_client import HelperError, get_helper
-from ..models import Client, ClientStat, ClientStatus, InstanceState, User, VpnInstance, utcnow
+from ..models import Client, ClientStat, ClientStatus, InstanceState, RetiredCert, User, VpnInstance, utcnow
 from ..security import decrypt, encrypt
 
 router = APIRouter(prefix="/api", tags=["vpn"])
@@ -120,6 +120,7 @@ def inst_out(db: DB, i: VpnInstance, live: dict | None = None) -> dict:
             "ipv4_cidr": i.ipv4_cidr, "ipv6_cidr": i.ipv6_cidr, "dns": i.dns, "mtu": i.mtu, "keepalive": i.keepalive,
             "routing_mode": i.routing_mode, "split_routes": i.split_routes, "nat": i.nat,
             "isolate_clients": i.isolate_clients, "public_key": i.public_key, "state": i.state.value,
+            "ca_expires_at": i.ca_expires_at, "server_cert_expires_at": i.server_cert_expires_at,
             "live": live, "clients_total": len(clients),
             "clients_active": sum(c.status == ClientStatus.ACTIVE for c in clients),
             "clients_connected": sum(connected(c) for c in clients),
@@ -135,7 +136,8 @@ def client_out(db: DB, c: Client) -> dict:
             "connected": connected(c), "expires_at": c.expires_at,
             "quota_bytes": c.quota_bytes, "rx_bytes": c.rx_bytes, "tx_bytes": c.tx_bytes,
             "last_handshake": c.last_handshake, "last_endpoint": c.last_endpoint,
-            "has_private_key": c.private_key_enc is not None, "created_at": c.created_at}
+            "has_private_key": c.private_key_enc is not None, "created_at": c.created_at, "protocol": i.protocol,
+            "cert_expires_at": c.cert_expires_at}
 
 
 def _validate_routes(routes: list[str] | None):
@@ -217,6 +219,16 @@ def list_instances(_: User = Depends(view), db: DB = Depends(get_db), helper=Dep
     return out
 
 
+@router.get("/instances/{iid}")
+def get_instance(iid: int, _: User = Depends(view), db: DB = Depends(get_db), helper=Depends(get_helper)):
+    inst = _inst(db, iid)
+    try:
+        live = engine(inst.protocol).status(helper, inst)
+    except HelperError:
+        live = None  # shown as "status unavailable", never guessed
+    return inst_out(db, inst, live)
+
+
 @router.post("/instances", status_code=201)
 def create_instance(body: InstanceIn, request: Request, user: User = Depends(manage_instances), db: DB = Depends(get_db),
                     helper=Depends(get_helper)):
@@ -224,7 +236,7 @@ def create_instance(body: InstanceIn, request: Request, user: User = Depends(man
     if not chk.ok:
         raise HTTPException(422, {"errors": chk.errors, "warnings": chk.warnings})
     eng = engine(body.protocol)
-    priv, pub = eng.create_keys()
+    priv, pub = eng.create_keys(body.iface)
     data = body.model_dump(exclude={"start"})
     data["name"] = data["name"].strip()
     inst = VpnInstance(**data, private_key_enc="", public_key=pub,
@@ -232,6 +244,9 @@ def create_instance(body: InstanceIn, request: Request, user: User = Depends(man
     db.add(inst)
     db.flush()
     inst.private_key_enc = encrypt(priv, f"instance:{inst.id}")
+    if hasattr(eng, "cert_expiry"):
+        exp = eng.cert_expiry(priv)
+        inst.ca_expires_at, inst.server_cert_expires_at = exp["ca"], exp["server"]
     try:
         services.sync(db, helper, inst)
         if body.start:
@@ -319,12 +334,15 @@ def create_client(body: ClientIn, request: Request, user: User = Depends(manage_
     _validate_routes(body.allowed_ips)
     _validate_dns(body.dns)
     eng = engine(inst.protocol)
+    secret = decrypt(inst.private_key_enc, f"instance:{inst.id}")
     if body.public_key:
+        if not eng.supports_own_key:
+            raise HTTPException(422, f"{inst.protocol} clients use certificates issued by this server; leave the key empty")
         if not valid_key(body.public_key):
             raise HTTPException(422, "That is not a valid WireGuard public key")
-        creds = {"private_key": None, "public_key": body.public_key, "psk": eng.new_client_credentials()["psk"]}
+        creds = {"private_key": None, "public_key": body.public_key, "psk": eng.new_client_credentials(secret)["psk"]}
     else:
-        creds = eng.new_client_credentials()
+        creds = eng.new_client_credentials(secret)
     if db.scalar(select(Client).where(Client.public_key == creds["public_key"])):
         raise HTTPException(409, "That public key is already in use")
     try:
@@ -341,6 +359,7 @@ def create_client(body: ClientIn, request: Request, user: User = Depends(manage_
     c.psk_enc = encrypt(creds["psk"], f"client-psk:{c.id}")
     if creds["private_key"]:
         c.private_key_enc = encrypt(creds["private_key"], f"client-key:{c.id}")
+    _set_identity(c, inst, creds)
     try:
         services.sync(db, helper, inst)
     except HelperError as e:
@@ -375,6 +394,17 @@ def edit_client(cid: int, body: ClientEdit, request: Request, user: User = Depen
     return client_out(db, c)
 
 
+def _set_identity(c: Client, inst: VpnInstance, creds: dict) -> None:
+    """How live statistics find this client, and when its certificate expires (OpenVPN)."""
+    if inst.protocol == "openvpn":
+        from .. import pki
+        i = pki.info(creds["psk"])
+        c.stats_key, c.cert_expires_at = i["cn"], i["not_after"]
+    else:
+        c.stats_key = creds["public_key"]
+    c.session_rx = c.session_tx = None
+
+
 def _blocked(c: Client) -> ClientStatus | None:
     if c.expires_at and _aware(c.expires_at) <= utcnow():
         return ClientStatus.EXPIRED
@@ -402,10 +432,14 @@ def client_action(cid: int, action: str, request: Request, user: User = Depends(
         c.status = ClientStatus.REVOKED
         c.private_key_enc = None  # nothing left to download
     else:
-        creds = engine(inst.protocol).new_client_credentials()
+        old_cert = decrypt(c.psk_enc, f"client-psk:{c.id}")
+        creds = engine(inst.protocol).new_client_credentials(decrypt(inst.private_key_enc, f"instance:{inst.id}"))
         c.public_key = creds["public_key"]
         c.private_key_enc = encrypt(creds["private_key"], f"client-key:{c.id}")
         c.psk_enc = encrypt(creds["psk"], f"client-psk:{c.id}")
+        _set_identity(c, inst, creds)
+        if inst.protocol == "openvpn":  # the old certificate must never work again: keep it on the CRL
+            db.add(RetiredCert(instance_id=inst.id, cert_enc=encrypt(old_cert, f"retired:{inst.id}")))
     try:
         services.sync(db, helper, inst)  # removed from / re-added to the live interface before we report success
     except HelperError as e:
@@ -441,7 +475,8 @@ def _config(db: DB, cid: int) -> tuple[Client, str]:
         raise HTTPException(410, "The private key is not stored on the server (bring-your-own key). Use the device's own config.")
     inst = db.get(VpnInstance, c.instance_id)
     return c, engine(inst.protocol).render_client_config(inst, c, decrypt(c.private_key_enc, f"client-key:{c.id}"),
-                                                         decrypt(c.psk_enc, f"client-psk:{c.id}"))
+                                                         decrypt(c.psk_enc, f"client-psk:{c.id}"),
+                                                         decrypt(inst.private_key_enc, f"instance:{inst.id}"))
 
 
 @router.get("/clients/{cid}/config")
@@ -450,11 +485,14 @@ def download_config(cid: int, request: Request, user: User = Depends(client_secr
     audit.record(db, "vpn", "client_config_download", user=user, ip=client_ip(request), target=c.name)
     db.commit()
     safe = re.sub(r"[^A-Za-z0-9_-]+", "-", c.name).strip("-")[:40] or f"client-{c.id}"
-    return Response(text, media_type="text/plain", headers={"Content-Disposition": f'attachment; filename="{safe}.conf"'})
+    ext = engine(db.get(VpnInstance, c.instance_id).protocol).file_ext
+    return Response(text, media_type="text/plain", headers={"Content-Disposition": f'attachment; filename="{safe}.{ext}"'})
 
 
 @router.get("/clients/{cid}/qr")
 def config_qr(cid: int, request: Request, user: User = Depends(client_secrets), db: DB = Depends(get_db)):
+    if not engine(db.get(VpnInstance, _client(db, cid).instance_id).protocol).supports_qr:
+        raise HTTPException(409, "OpenVPN profiles are too large for a QR code; download the .ovpn file instead")
     c, text = _config(db, cid)
     buf = io.BytesIO()
     qrcode.make(text, image_factory=qrcode.image.svg.SvgPathImage, box_size=10).save(buf)
@@ -486,3 +524,20 @@ def vpn_summary(_: User = Depends(view), db: DB = Depends(get_db)):
             "connected": sum(connected(c) for c in clients),
             "rx_bytes": db.scalar(select(func.coalesce(func.sum(Client.rx_bytes), 0))),
             "tx_bytes": db.scalar(select(func.coalesce(func.sum(Client.tx_bytes), 0)))}
+
+
+@router.get("/certificates")
+def certificates(_: User = Depends(view), db: DB = Depends(get_db)):
+    """Expiry overview of every certificate VPNix Create issued (no key material)."""
+    now, out = utcnow(), []
+
+    def row(kind, name, instance, expires):
+        days = int((_aware(expires) - now).total_seconds() // 86400) if expires else None
+        state = "unknown" if days is None else "expired" if days < 0 else "expiring" if days <= 30 else "ok"
+        out.append({"kind": kind, "name": name, "instance": instance, "expires_at": expires, "days_left": days, "state": state})
+    for i in db.scalars(select(VpnInstance).where(VpnInstance.protocol == "openvpn")):
+        row("ca", f"{i.name} CA", i.name, i.ca_expires_at)
+        row("server", f"{i.name} server", i.name, i.server_cert_expires_at)
+        for c in db.scalars(select(Client).where(Client.instance_id == i.id, Client.status != ClientStatus.REVOKED)):
+            row("client", c.name, i.name, c.cert_expires_at)
+    return sorted(out, key=lambda r: (r["days_left"] is None, r["days_left"] or 0))

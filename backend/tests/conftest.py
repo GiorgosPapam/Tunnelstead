@@ -58,6 +58,7 @@ class FakeHelper:
                        {"name": "wg0", "up": True, "managed_wg": False, "addresses": ["10.99.0.1/24"]}]
         self.peers, self.services, self.fail = {}, {}, False
         self.dump = {}
+        self.ovpn, self.crl, self.sessions = {}, {}, {}
 
     def call(self, method, **p):
         from vpnix_create.helper_client import HelperError
@@ -71,6 +72,23 @@ class FakeHelper:
                     [{"name": n, "managed": True} for n in self.peers]}
         if method == "net.port_in_use":
             return {"in_use": (p["transport"], p["port"]) in self.ports_in_use}
+        if method == "net.ovpn_interfaces":
+            return {"interfaces": [{"name": n, "managed": True} for n in self.ovpn]}
+        if method == "ovpn.apply":
+            self.ovpn[p["iface"]] = {c["cn"]: c for c in p["clients"]}
+            self.crl[p["iface"]] = p["crl"]
+            return {"ok": True}
+        if method == "ovpn.service":
+            if p["action"] == "status":
+                return {"active": self.services.get(p["iface"], False), "enabled": True}
+            running = self.services.get(p["iface"], False)
+            self.services[p["iface"]] = p["action"] in ("start", "restart") or (running and p["action"] != "stop")
+            return {"ok": True}
+        if method == "ovpn.delete":
+            self.ovpn.pop(p["iface"], None)
+            return {"ok": True}
+        if method == "ovpn.status":
+            return {"clients": self.sessions.get(p["iface"], [])}
         if method == "wg.sync":
             self.peers[p["iface"]] = {x["public_key"]: x for x in p["peers"]}
             return {"ok": True}

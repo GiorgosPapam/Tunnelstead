@@ -59,7 +59,7 @@ install -d -m 0750 -o root -g "$SVC_USER" "$ETC"
 install -d -m 0750 -o "$SVC_USER" -g "$SVC_USER" "$STATE" "$STATE/backups"
 rsync -a --delete --exclude .venv --exclude __pycache__ --exclude tests "$SRC/backend/" "$PREFIX/backend/"
 install -m 0644 "$SRC/VERSION" "$PREFIX/VERSION"
-install -d -m 0755 "$PREFIX/helper" && install -m 0644 "$SRC/helper/vpnix_create_helper.py" "$PREFIX/helper/"
+install -d -m 0755 "$PREFIX/helper" && install -m 0644 "$SRC"/helper/{vpnix_create_helper,ovpn_ops}.py "$PREFIX/helper/"
 [[ -d "$PREFIX/venv" ]] || python3 -m venv "$PREFIX/venv"
 "$PREFIX/venv/bin/pip" install -q --upgrade pip
 "$PREFIX/venv/bin/pip" install -q --require-virtualenv -r "$PREFIX/backend/requirements.txt"

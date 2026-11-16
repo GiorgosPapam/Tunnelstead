@@ -24,6 +24,7 @@ WG_DIR = "/etc/wireguard"
 MARKER = "# Managed by VPNix Create - do not edit by hand"
 NFT_TABLE = "vpnix_create"
 WG_IFACE = re.compile(r"^wg[0-9]{1,3}$")
+TUN_IFACE = re.compile(r"^(wg|ovpn)[0-9]{1,3}$")  # interfaces the firewall may reference
 ANY_IFACE = re.compile(r"^[a-zA-Z0-9_.:-]{1,15}$")
 BIN = {"wg": "/usr/bin/wg", "wg-quick": "/usr/bin/wg-quick", "ip": "/usr/sbin/ip", "ss": "/usr/bin/ss",
        "nft": "/usr/sbin/nft", "systemctl": "/usr/bin/systemctl", "sysctl": "/usr/sbin/sysctl"}
@@ -215,7 +216,9 @@ def fw_apply(instances, egress=None):
     egress = v_iface(egress) if egress else None
     accept_in, fwd, nat = [], [], []
     for i in instances:
-        iface, port = v_wg_iface(i["iface"]), v_port(i["port"])
+        if not isinstance(i.get("iface"), str) or not TUN_IFACE.match(i["iface"]):
+            raise Invalid("firewall entries must reference a managed tunnel interface")
+        iface, port = i["iface"], v_port(i["port"])
         proto = i.get("transport", "udp")
         if proto not in ("udp", "tcp"):
             raise Invalid("bad transport")
@@ -233,7 +236,7 @@ def fw_apply(instances, egress=None):
         "  chain input {", "    type filter hook input priority 0; policy accept;", *accept_in, "  }",
         "  chain forward {", "    type filter hook forward priority 0; policy accept;",
         "    ct state established,related accept", *fwd,
-        '    iifname "wg*" drop  # anything else from a managed tunnel (e.g. client-to-client) is refused', "  }",
+        '    iifname { "wg*", "ovpn*" } drop  # anything else from a managed tunnel (client-to-client) is refused', "  }",
         "  chain postrouting {", "    type nat hook postrouting priority 100;", *nat, "  }", "}"])
     run("nft", "-c", "-f", "-", stdin=rules)  # dry-run check first: an invalid ruleset changes nothing
     run("nft", "-f", "-", stdin=rules)
@@ -265,9 +268,22 @@ def sys_status():
             "nftables": os.path.exists(BIN["nft"]), "kernel": os.uname().release}
 
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import ovpn_ops  # noqa: E402  (installed next to this file)
+
+
+def ovpn_interfaces():
+    names = set()
+    if os.path.isdir(ovpn_ops.SERVER_DIR):
+        names = {f[:-5] for f in os.listdir(ovpn_ops.SERVER_DIR) if f.endswith(".conf")}
+    return {"interfaces": [{"name": n, "managed": ovpn_ops.managed(n)} for n in sorted(names)]}
+
+
 METHODS = {
     "net.interfaces": net_interfaces, "net.port_in_use": net_port_in_use, "net.wg_interfaces": net_wg_interfaces,
     "wg.sync": wg_sync, "wg.service": wg_service, "wg.delete": wg_delete, "wg.dump": wg_dump,
+    "ovpn.apply": ovpn_ops.apply, "ovpn.service": ovpn_ops.service, "ovpn.status": ovpn_ops.status,
+    "ovpn.delete": ovpn_ops.delete, "net.ovpn_interfaces": ovpn_interfaces,
     "fw.apply": fw_apply, "fw.show": fw_show, "sys.forwarding": sys_forwarding, "sys.status": sys_status,
 }
 
@@ -282,7 +298,7 @@ def dispatch(raw: bytes) -> dict:
         if not isinstance(params, dict):
             return {"error": "params must be an object"}
         return {"result": fn(**params)}
-    except (Invalid, TypeError, ValueError, KeyError) as e:
+    except (Invalid, ovpn_ops.Invalid, TypeError, ValueError, KeyError) as e:
         return {"error": f"invalid request: {e}"}
     except (RuntimeError, OSError, subprocess.SubprocessError) as e:
         return {"error": str(e)}

@@ -23,21 +23,33 @@ def _aware(dt):
 def collect(db: DB, helper) -> dict:
     out = {"instances": 0, "clients_updated": 0, "blocked": 0, "errors": 0}
     for inst in db.scalars(select(VpnInstance).where(VpnInstance.state == InstanceState.RUNNING)):
+        eng = engine(inst.protocol)
         try:
-            peers = {p["public_key"]: p for p in engine(inst.protocol).collect_stats(helper, inst)}
+            peers = {p["key"]: p for p in eng.collect_stats(helper, inst)}
         except HelperError as e:
             log.warning("stats for %s failed: %s", inst.name, e)
             out["errors"] += 1
             continue
         out["instances"] += 1
         for c in db.scalars(select(Client).where(Client.instance_id == inst.id)):
-            p = peers.get(c.public_key)
+            p = peers.get(c.stats_key or c.public_key)
             if not p:
+                c.session_rx = c.session_tx = None  # not connected: the next session starts from zero
                 continue
-            # Kernel counters restart with the interface; keep lifetime totals monotonic.
-            c.rx_bytes, c.tx_bytes = max(c.rx_bytes, p["rx_bytes"]), max(c.tx_bytes, p["tx_bytes"])
+            if eng.session_counters:
+                # OpenVPN counts per session: add what changed since the last sample (a new session restarts at 0).
+                same = (c.session_rx is not None and c.last_endpoint == p["endpoint"]
+                        and p["rx_bytes"] >= c.session_rx and p["tx_bytes"] >= c.session_tx)
+                c.rx_bytes += p["rx_bytes"] - (c.session_rx if same else 0)
+                c.tx_bytes += p["tx_bytes"] - (c.session_tx if same else 0)
+                c.session_rx, c.session_tx = p["rx_bytes"], p["tx_bytes"]
+            else:
+                # WireGuard counters restart with the interface; keep lifetime totals monotonic.
+                c.rx_bytes, c.tx_bytes = max(c.rx_bytes, p["rx_bytes"]), max(c.tx_bytes, p["tx_bytes"])
             if p.get("latest_handshake"):
                 c.last_handshake = datetime.fromtimestamp(p["latest_handshake"], UTC)
+            elif p.get("connected"):
+                c.last_handshake = utcnow()  # listed in the live session table right now
             c.last_endpoint = p.get("endpoint")
             db.add(ClientStat(client_id=c.id, rx_bytes=c.rx_bytes, tx_bytes=c.tx_bytes))
             out["clients_updated"] += 1

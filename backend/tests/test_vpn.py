@@ -138,3 +138,11 @@ def test_delete_instance_requires_typed_name(app, db, helper):
     assert c.delete(f"/api/instances/{iid}", params={"confirm": "wrong"}).status_code == 422
     assert c.delete(f"/api/instances/{iid}", params={"confirm": "WG-Primary"}).status_code == 204
     assert ("wg.delete", {"iface": "wg1"}) in helper.calls
+
+
+def test_get_single_instance(app, db, helper):
+    c = _admin(app, db)
+    iid = c.post("/api/instances", json=WG1).json()["id"]
+    r = c.get(f"/api/instances/{iid}").json()
+    assert r["name"] == "WG-Primary" and r["live"]["active"] is True
+    assert c.get("/api/instances/999").status_code == 404

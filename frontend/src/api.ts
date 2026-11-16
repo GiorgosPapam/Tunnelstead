@@ -41,3 +41,13 @@ export type Me = { id: number; username: string; email: string | null; role: "ad
   mfa_enabled: boolean; must_change_password: boolean };
 export const can = (me: Me, perm: "users.manage" | "audit.view" | "instances.manage" | "clients.manage") =>
   me.role === "admin" || (perm === "clients.manage" && me.role === "operator");
+
+export const fmtAgo = (s: string | null | undefined) => {
+  if (!s) return "never";
+  const t = new Date(/([zZ]|[+-]\d\d:\d\d)$/.test(s) ? s : s + "Z").getTime();
+  const sec = Math.max(0, (Date.now() - t) / 1000);
+  if (sec < 60) return "just now";
+  if (sec < 3600) return `${Math.floor(sec / 60)} min ago`;
+  if (sec < 86400) return `${Math.floor(sec / 3600)} h ago`;
+  return `${Math.floor(sec / 86400)} d ago`;
+};

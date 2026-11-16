@@ -19,6 +19,18 @@ class SimulatedHost:
             return {"interfaces": [{"name": n, "managed": True} for n in self.peers]}
         if method == "net.port_in_use":
             return {"in_use": False}
+        if method == "net.ovpn_interfaces":
+            return {"interfaces": []}
+        if method in ("ovpn.apply", "ovpn.delete"):
+            return {"ok": True}
+        if method == "ovpn.service":
+            if p["action"] == "status":
+                return {"active": SimulatedHost.services.get(p["iface"], False), "enabled": True}
+            SimulatedHost.services[p["iface"]] = p["action"] in ("start", "restart") or (
+                SimulatedHost.services.get(p["iface"], False) and p["action"] != "stop")
+            return {"ok": True}
+        if method == "ovpn.status":
+            return {"clients": []}
         if method == "wg.sync":
             SimulatedHost.peers[p["iface"]] = [x["public_key"] for x in p["peers"]]
             return {"ok": True}

@@ -1,5 +1,6 @@
 import { ArrowDownLeft, ArrowUpRight, Pause, Play, Plus, RotateCw, Server, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { api, can, fmtBytes, Me } from "../api";
 import { Alert, Empty, Modal, Spinner } from "../components/ui";
 import Wizard from "./Wizard";
@@ -32,17 +33,17 @@ export default function Servers({ me }: { me: Me }) {
   return <>
     <div className="flex flex-wrap items-end justify-between gap-3 mb-6">
       <div><h1 className="text-2xl font-semibold tracking-tight m-0">VPN Servers</h1>
-        <p className="muted m-0 mt-1">Each instance has its own interface, port and subnet. Changes to one never affect another.</p></div>
+        <p className="muted m-0 mt-1">Each instance has its own interface, port and subnet. Open one to see all its details and clients.</p></div>
       {admin && <button className="btn btn-primary" onClick={() => setWizard(true)}><Plus size={16} aria-hidden="true" />New VPN instance</button>}
     </div>
     <Alert>{err}</Alert>
     {!list ? <Spinner /> : list.length === 0 ? <Empty icon={<Server size={22} />} title="No VPN instances yet"
       text="Deploy your first WireGuard server with the guided wizard. It checks ports, interfaces and subnets on this server before changing anything."
       action={admin ? <button className="btn btn-primary" onClick={() => setWizard(true)}><Plus size={16} aria-hidden="true" />Deploy a VPN instance</button> : undefined} /> :
-      <div className="grid gap-4 md:grid-cols-2">{list.map((i) => <article key={i.id} className="card overflow-hidden" aria-label={i.name}>
+      <div className="grid gap-4 md:grid-cols-2">{list.map((i) => <article key={i.id} className="card overflow-hidden relative transition hover:border-[var(--border-strong)] hover:-translate-y-0.5" aria-label={i.name}>
         <header className="flex flex-wrap items-center gap-2.5 px-5 py-4 border-b border-[var(--border)]">
-          <h2 className="text-base font-semibold m-0">{i.name}</h2>
-          <span className="pill" style={{ background: "linear-gradient(135deg, var(--primary), var(--primary-2))", color: "#fff" }}>WireGuard</span>
+          <h2 className="text-base font-semibold m-0"><Link to={`/servers/${i.id}`} className="no-underline text-[var(--text)] hover:text-[var(--primary-2)] after:absolute after:inset-0">{i.name}</Link></h2>
+          <span className="pill" style={{ background: "linear-gradient(135deg, var(--primary), var(--primary-2))", color: "#fff" }}>{i.protocol === "openvpn" ? "OpenVPN" : "WireGuard"}</span>
           <StateBadge i={i} />
           <span className="muted text-xs ml-auto"><code>{i.iface}</code> · {i.transport.toUpperCase()} {i.listen_port}</span>
         </header>
@@ -55,7 +56,7 @@ export default function Servers({ me }: { me: Me }) {
             <span style={{ color: "var(--ok)" }}><ArrowUpRight size={13} className="inline" aria-label="sent" />{fmtBytes(i.tx_bytes)}</span></span></div>
           <div className="col-span-2 muted text-xs break-all">Endpoint {i.endpoint_host}:{i.listen_port} · Public key <code>{i.public_key}</code></div>
         </div>
-        {admin && <footer className="flex flex-wrap gap-2 px-5 py-3 border-t border-[var(--border)]">
+        {admin && <footer className="relative z-10 flex flex-wrap gap-2 px-5 py-3 border-t border-[var(--border)]">
           {i.state === "stopped" ? <button className="btn !py-1.5" disabled={busy === i.id} onClick={() => act(i, "start")}><Play size={15} aria-hidden="true" />Start</button>
             : <button className="btn !py-1.5" disabled={busy === i.id} onClick={() => act(i, "stop")}><Pause size={15} aria-hidden="true" />Stop</button>}
           <button className="btn !py-1.5" disabled={busy === i.id} onClick={() => act(i, "restart")}><RotateCw size={15} aria-hidden="true" />Restart</button>

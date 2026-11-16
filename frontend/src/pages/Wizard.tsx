@@ -28,11 +28,14 @@ export default function Wizard({ onClose, onDone }: { onClose: () => void; onDon
   const [review, setReview] = useState<Preview | null>(null); const [deploying, setDeploying] = useState(false);
   const set = (patch: Partial<typeof f>) => setF((x) => ({ ...x, ...patch }));
 
-  useEffect(() => {
-    Promise.all([api<Facts>("/api/network/facts"), api<{ port: number; iface: string; ipv4_cidr: string; ipv6_cidr: string; egress_iface: string; port_note: string }>("/api/instances/recommend")])
-      .then(([fa, r]) => { setFacts(fa); set({ listen_port: r.port, iface: r.iface, ipv4_cidr: r.ipv4_cidr, ipv6_cidr: r.ipv6_cidr, egress_iface: r.egress_iface ?? "", port_note: r.port_note }); })
+  useEffect(() => { api<Facts>("/api/network/facts").then(setFacts).catch((e) => setErr(e.message)); }, []);
+  useEffect(() => {  // recommendations depend on protocol + transport and on what is in use on the server right now
+    api<{ port: number; iface: string; ipv4_cidr: string; ipv6_cidr: string; egress_iface: string; port_note: string }>(
+      `/api/instances/recommend?protocol=${f.protocol}&transport=${f.transport}`)
+      .then((r) => setF((x) => ({ ...x, listen_port: r.port, iface: r.iface, ipv4_cidr: x.ipv4_cidr || r.ipv4_cidr, ipv6_cidr: x.ipv6_cidr || r.ipv6_cidr,
+        egress_iface: x.egress_iface || (r.egress_iface ?? ""), port_note: r.port_note, mtu: f.protocol === "openvpn" ? 1500 : 1420 })))
       .catch((e) => setErr(e.message));
-  }, []);
+  }, [f.protocol, f.transport]);
   useEffect(() => {  // live port availability, debounced
     if (!f.listen_port) return;
     const t = setTimeout(() => api<{ free: boolean; message: string }>(`/api/instances/port-check?port=${f.listen_port}&transport=${f.transport}`)
@@ -63,8 +66,8 @@ export default function Wizard({ onClose, onDone }: { onClose: () => void; onDon
   if (!facts) return err ? <Alert>{err}</Alert> : <Spinner label="Inspecting this server" />;
   const panes: ReactNode[] = [
     <div className="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="VPN protocol">
-      <Choice checked={f.protocol === "wireguard"} onSelect={() => set({ protocol: "wireguard" })} title="WireGuard" text="Modern, fast and simple. Best choice for most setups; QR codes for phones." />
-      <Choice checked={false} disabled onSelect={() => {}} title="OpenVPN" text="Arrives in development phase 3, after its full lifecycle is implemented and tested." />
+      <Choice checked={f.protocol === "wireguard"} onSelect={() => set({ protocol: "wireguard", transport: "udp", name: f.name === "OVPN-Primary" ? "WG-Primary" : f.name })} title="WireGuard" text="Modern, fast and simple. Best choice for most setups; QR codes for phones." />
+      <Choice checked={f.protocol === "openvpn"} onSelect={() => set({ protocol: "openvpn", name: f.name === "WG-Primary" ? "OVPN-Primary" : f.name })} title="OpenVPN" text="Certificate-based, works on restrictive networks over TCP, very broad client support. Downloads a .ovpn file (no QR code)." />
     </div>,
     <><Field id="w-name" label="Instance name" hint="Shown in the dashboard, e.g. WG-Primary, WG-Remote.">
       <input id="w-name" className="field" value={f.name} onChange={(e) => set({ name: e.target.value })} /></Field>{fieldErr("name")}
@@ -75,8 +78,9 @@ export default function Wizard({ onClose, onDone }: { onClose: () => void; onDon
         {facts.interfaces.interfaces.filter((i) => !i.managed_wg).map((i) => <option key={i.name} value={i.name}>
           {i.name}{i.name === facts.interfaces.default ? " (default route)" : ""} {i.addresses.join(", ")}</option>)}</select></Field>{fieldErr("egress_iface")}</>,
     <div className="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="Transport">
-      <Choice checked={f.transport === "udp"} onSelect={() => set({ transport: "udp" })} title="UDP" text="WireGuard always uses UDP. It is connectionless and fast." />
-      <Choice checked={false} disabled onSelect={() => {}} title="TCP" text="Not supported by WireGuard (OpenVPN will offer TCP for restrictive networks)." />
+      <Choice checked={f.transport === "udp"} onSelect={() => set({ transport: "udp" })} title="UDP" text={f.protocol === "wireguard" ? "WireGuard always uses UDP. It is connectionless and fast." : "Recommended: faster, no TCP-over-TCP slowdowns."} />
+      <Choice checked={f.transport === "tcp"} disabled={f.protocol === "wireguard"} onSelect={() => set({ transport: "tcp" })} title="TCP"
+        text={f.protocol === "wireguard" ? "Not supported by WireGuard." : "Use when networks block UDP (hotels, corporate Wi-Fi). Often on port 443."} />
     </div>,
     <><Field id="w-port" label={`Listening port (${f.transport.toUpperCase()})`} hint={f.port_note}>
       <input id="w-port" className="field" type="number" min={1024} max={65535} value={f.listen_port} onChange={(e) => set({ listen_port: Number(e.target.value) })} /></Field>
@@ -111,7 +115,7 @@ export default function Wizard({ onClose, onDone }: { onClose: () => void; onDon
       <details className="mt-4"><summary className="cursor-pointer text-sm font-semibold">Advanced settings</summary>
         <div className="grid gap-3 sm:grid-cols-3 mt-3">
           <Field id="w-iface" label="Interface name"><input id="w-iface" className="field" value={f.iface} onChange={(e) => set({ iface: e.target.value })} /></Field>
-          <Field id="w-mtu" label="MTU" hint="1420 suits most networks."><input id="w-mtu" className="field" type="number" min={1280} max={1500} value={f.mtu} onChange={(e) => set({ mtu: Number(e.target.value) })} /></Field>
+          <Field id="w-mtu" label="MTU" hint={f.protocol === "openvpn" ? "1500 for OpenVPN." : "1420 suits most networks."}><input id="w-mtu" className="field" type="number" min={1280} max={1500} value={f.mtu} onChange={(e) => set({ mtu: Number(e.target.value) })} /></Field>
           <Field id="w-ka" label="PersistentKeepalive (s)" hint="Keeps NAT mappings open; 0 = off."><input id="w-ka" className="field" type="number" min={0} max={600} value={f.keepalive} onChange={(e) => set({ keepalive: Number(e.target.value) })} /></Field>
         </div>{fieldErr("iface")}{fieldErr("mtu")}
         <button className="btn mt-1" onClick={goReview}>Re-check</button></details>

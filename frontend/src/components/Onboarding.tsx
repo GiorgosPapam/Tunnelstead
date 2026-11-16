@@ -25,7 +25,7 @@ export function Onboarding({ instances, clients }: { instances: number; clients:
       <Item done={null} title="Open the VPN port in your provider's firewall">Allow the UDP port you choose (51820 by default) in your hosting provider's control panel. VPNix Create opens it on this server automatically.</Item>
       <Item done={instances > 0} title="Create your first VPN instance">The wizard sets the public endpoint, DNS, routing, forwarding and NAT. {instances === 0 && <Link to="/servers">Open the wizard →</Link>}</Item>
       <Item done={sys ? sys.ipv4_forwarding : null} title="Forwarding and NAT enabled">{sys?.ipv4_forwarding ? `IPv4 forwarding on${sys.ipv6_forwarding ? ", IPv6 forwarding on" : ""}.` : "Enabled automatically when you deploy an instance with NAT."}</Item>
-      <Item done={clients > 0} title="Add your first client">Get a QR code or configuration file for a phone or laptop. {instances > 0 && clients === 0 && <Link to="/clients">Add a client →</Link>}</Item>
+      <Item done={clients > 0} title="Add your first client">Get a QR code or configuration file for a phone or laptop. {instances > 0 && clients === 0 && <Link to="/servers">Open your VPN server →</Link>}</Item>
     </ol>
   </section>;
 }

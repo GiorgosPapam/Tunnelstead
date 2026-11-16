@@ -1,7 +1,8 @@
+from .openvpn import OpenVPNEngine
 from .wireguard import WireGuardEngine
 
-# OpenVPN joins in phase 3, only after its full lifecycle is implemented and tested.
-ENGINES = {"wireguard": WireGuardEngine()}
+# A protocol is listed only once its whole lifecycle is implemented and tested (unit + real-host e2e).
+ENGINES = {"wireguard": WireGuardEngine(), "openvpn": OpenVPNEngine()}
 
 
 def engine(protocol: str):

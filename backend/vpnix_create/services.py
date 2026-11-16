@@ -18,7 +18,6 @@ DNS_PRESETS = {
     "quad9": ["9.9.9.9", "149.112.112.112", "2620:fe::fe"],
     "google": ["8.8.8.8", "8.8.4.4", "2001:4860:4860::8888"],
 }
-PORT_RANGE = {"wireguard": (51820, 51920)}
 
 
 @dataclass
@@ -34,7 +33,9 @@ class Check:
 def host_facts(helper) -> dict:
     """Live state of the server, so conflicts with things VPNix did not create are detected too."""
     ifaces = helper.call("net.interfaces")
-    return {"interfaces": ifaces, "wg": helper.call("net.wg_interfaces")["interfaces"],
+    # Every tunnel config on the host (managed or foreign), for conflict detection across protocols.
+    tunnels = helper.call("net.wg_interfaces")["interfaces"] + helper.call("net.ovpn_interfaces")["interfaces"]
+    return {"interfaces": ifaces, "wg": tunnels,
             "addresses": [a for i in ifaces["interfaces"] for a in i["addresses"]]}
 
 
@@ -52,7 +53,7 @@ def port_free(helper, db: DB, port: int, transport: str, exclude_id: int | None 
 
 def recommend(db: DB, helper, protocol: str = "wireguard", transport: str = "udp") -> dict:
     eng = engine(protocol)
-    lo, hi = PORT_RANGE[protocol]
+    lo, hi = eng.port_range
     port = next((p for p in range(lo, hi) if port_free(helper, db, p, transport) is None), None)
     facts = host_facts(helper)
     taken = {i.iface for i in db.scalars(select(VpnInstance))} | {w["name"] for w in facts["wg"]} | \
@@ -118,8 +119,8 @@ def validate(db: DB, helper, data: dict, exclude_id: int | None = None) -> Check
             c.errors[key] = "Use a private range (10.x, 172.16-31.x, 192.168.x)" if version == 4 else "Use a ULA range (fd00::/8)"
         elif version == 4 and not 16 <= net.prefixlen <= 29:
             c.errors[key] = "Use a /16 to /29 network"
-        elif version == 6 and not 64 <= net.prefixlen <= 120:
-            c.errors[key] = "Use a /64 to /120 network"
+        elif version == 6 and not 64 <= net.prefixlen <= (112 if eng.protocol == "openvpn" else 120):
+            c.errors[key] = f"Use a /64 to /{112 if eng.protocol == 'openvpn' else 120} network"
         else:
             for o in others:
                 theirs = o.ipv4_cidr if version == 4 else o.ipv6_cidr
@@ -140,7 +141,7 @@ def validate(db: DB, helper, data: dict, exclude_id: int | None = None) -> Check
         except ValueError:
             c.errors["dns"] = f"{d} is not an IP address"
     if not 1280 <= int(data.get("mtu", 1420)) <= 1500:
-        c.errors["mtu"] = "MTU must be 1280-1500 (WireGuard default 1420)"
+        c.errors["mtu"] = "MTU must be 1280-1500 (WireGuard 1420, OpenVPN 1500)"
     if data.get("routing_mode", "full") not in ("full", "split"):
         c.errors["routing_mode"] = "Choose full or split tunnel"
     for r in data.get("split_routes") or []:
@@ -177,10 +178,18 @@ def allocate_ip(db: DB, inst: VpnInstance) -> tuple[str, str | None]:
 
 def sync(db: DB, helper, inst: VpnInstance) -> None:
     """Push the instance's complete desired state to the server, then refresh the firewall."""
+    clients = list(db.scalars(select(Client).where(Client.instance_id == inst.id)))
     active = [{"public_key": c.public_key, "psk": decrypt(c.psk_enc, f"client-psk:{c.id}"), "ipv4": c.ipv4,
-               "ipv6": c.ipv6} for c in db.scalars(select(Client).where(Client.instance_id == inst.id,
-                                                                         Client.status == ClientStatus.ACTIVE))]
-    engine(inst.protocol).apply(helper, inst, active, decrypt(inst.private_key_enc, f"instance:{inst.id}"))
+               "ipv6": c.ipv6} for c in clients if c.status == ClientStatus.ACTIVE]
+    # Certificates of every non-active client go on the CRL (OpenVPN); WireGuard ignores this list.
+    # Regenerated (retired) certificates stay on the CRL too, so an old .ovpn file never works again.
+    inactive = []
+    if inst.protocol == "openvpn":
+        from .models import RetiredCert
+        inactive = [decrypt(c.psk_enc, f"client-psk:{c.id}") for c in clients if c.status != ClientStatus.ACTIVE]
+        inactive += [decrypt(r.cert_enc, f"retired:{inst.id}")
+                     for r in db.scalars(select(RetiredCert).where(RetiredCert.instance_id == inst.id))]
+    engine(inst.protocol).apply(helper, inst, active, decrypt(inst.private_key_enc, f"instance:{inst.id}"), inactive)
     sync_firewall(db, helper)
 
 

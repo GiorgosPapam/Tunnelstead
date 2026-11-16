@@ -1,4 +1,4 @@
-import { Activity, FileText, Flame, LayoutDashboard, Menu, Moon, Network, RefreshCcw, Server, Settings, Sun, Users, X, LogOut } from "lucide-react";
+import { Activity, FileText, Flame, LayoutDashboard, Menu, Moon, Network, RefreshCcw, Server, Settings, Sun, X, LogOut } from "lucide-react";
 import { useEffect, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { Me } from "../api";
@@ -7,7 +7,6 @@ import { Wordmark } from "./Logo";
 export const NAV = [
   { to: "/", label: "Overview", icon: LayoutDashboard },
   { to: "/servers", label: "VPN Servers", icon: Server },
-  { to: "/clients", label: "Clients", icon: Users },
   { to: "/networks", label: "Networks", icon: Network },
   { to: "/firewall", label: "Firewall", icon: Flame },
   { to: "/monitoring", label: "Monitoring", icon: Activity },
