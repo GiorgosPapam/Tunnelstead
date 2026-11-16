@@ -40,8 +40,20 @@ Legend: [x] done and tested · [ ] pending · [~] in progress · [!] blocked (re
 - [x] Tests: 41 backend (helper hostile input, conflicts, lifecycle, roles, rollback, enforcement), 10 browser,
       27/27 real-host checks on Ubuntu 24.04 (tests-e2e/wireguard_e2e.py)
 
-## Phase 3: OpenVPN
-- [ ] Engine, UDP/TCP, multiple instances, PKI, CRL revocation, cert expiry monitoring, .ovpn download
+## Phase 3: OpenVPN ✅
+- [x] OpenVPN engine on the shared engine interface (openvpn-server@ovpnN), multiple instances, UDP and TCP
+- [x] Per-instance PKI: ECDSA P-256 CA, server and client certificates (random CNs), tls-crypt, TLS 1.2+,
+      AES-256-GCM / ChaCha20-Poly1305; only the CA fingerprint is ever shown
+- [x] Revocation enforced twice: ccd-exclusive (+ live session killed) and CRL; regenerated certificates stay on the CRL
+- [x] Certificate expiry monitoring (CA, server, every client) on the server page and /api/certificates
+- [x] .ovpn downloads (full/split tunnel, IPv6 leak protection, DNS); no QR or bring-your-own key for OpenVPN (explained)
+- [x] Live sessions and lifetime traffic from per-session counters
+- [x] Helper: OpenVPN operations validate every value against strict patterns before writing (directive injection,
+      path traversal, foreign instances all refused)
+- [x] UI: Clients removed from the navigation; each VPN server opens a detail page with all its settings,
+      certificates, traffic and its clients (online now, last connected, from where, usage, quota, expiry, actions)
+- [x] Tests: 58 backend, 11 browser, 25/25 real OpenVPN checks (UDP+TCP, incl. old profile rejected after regeneration),
+      WireGuard regression 27/27
 
 ## Phase 4: Routing
 - [ ] Full/split tunnel, presets, IPv4/IPv6, NAT/forwarding, DNS leak guidance, config previews
