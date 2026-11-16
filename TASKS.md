@@ -55,9 +55,15 @@ Legend: [x] done and tested · [ ] pending · [~] in progress · [!] blocked (re
 - [x] Tests: 58 backend, 11 browser, 25/25 real OpenVPN checks (UDP+TCP, incl. old profile rejected after regeneration),
       WireGuard regression 27/27
 
-## Phase 4: Routing
-- [ ] Full/split tunnel, presets, IPv4/IPv6, NAT/forwarding, DNS leak guidance, config previews
-- [ ] Firewall UI (app-owned nftables table), validation, timed rollback, lock-out protection
+## Phase 4: Routing & Firewall ✅
+- [x] Networks page: per-server health/leak checks (forwarding, NAT, IPv6, DNS, port open, route conflicts)
+- [x] Routing presets (full, VPN-only, LAN, custom) with before/after preview and affected-client list
+- [x] Firewall page: custom allow/block rules in the app-owned `inet vpnix_create` table only
+- [x] Strict validation in API and helper (rejects injection), `nft -c` dry run before apply
+- [x] Every change auto-rolls back after 60 s unless "Keep changes" is pressed; dashboard reconciles
+- [x] Management-access restriction with lock-out detection and explicit risk acknowledgement
+- [x] Read-only view of the full host ruleset; other tables are never modified
+- [x] Tests: 72 backend, 14 browser, real host: firewall 12/12, WireGuard 27/27, OpenVPN 25/25
 
 ## Phase 5: Operations
 - [ ] Monitoring charts, logs (structured, filter/search, rotation), notifications
