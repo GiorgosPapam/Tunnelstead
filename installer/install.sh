@@ -112,7 +112,16 @@ cat > /etc/caddy/Caddyfile <<CADDY
 $SITE {
 	$TLS_LINE
 	encode gzip
-	header -Server
+	header {
+		-Server
+		Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'"
+		Strict-Transport-Security "max-age=63072000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy no-referrer
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		Cross-Origin-Opener-Policy same-origin
+	}
 	handle /api/* {
 		reverse_proxy 127.0.0.1:8090
 	}
