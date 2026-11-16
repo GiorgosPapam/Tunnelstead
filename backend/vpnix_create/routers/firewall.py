@@ -103,6 +103,8 @@ def reconcile(db: DB, helper) -> None:
         db.delete(pend)
         audit.record(db, "system", "firewall_rolled_back", success=False)
         db.commit()
+        from .. import notify
+        notify.notify(db, "firewall_rolled_back", "A firewall change was not confirmed within 60 seconds and was undone automatically.")
 
 
 def _apply_with_rollback(db: DB, helper, previous: dict, user: User, request: Request, event: str, **meta) -> dict:

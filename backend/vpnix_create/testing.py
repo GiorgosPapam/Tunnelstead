@@ -65,6 +65,9 @@ class SimulatedHost:
             return {"ok": True}
         if method == "wg.dump":
             return {"running": True, "peers": []}
+        if method == "sys.journal":
+            return {"entries": [{"ts": 1763300000, "unit": "vpnix-create-api.service", "priority": 6, "message": "Application startup complete."},
+                                {"ts": 1763300060, "unit": "vpnix-create-helper.service", "priority": 4, "message": "simulated warning"}]}
         if method == "sys.status":
             return {"ipv4_forwarding": True, "ipv6_forwarding": True, "wireguard_tools": True, "nftables": True, "kernel": "simulated"}
         return {"ok": True}

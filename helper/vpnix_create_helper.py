@@ -27,7 +27,8 @@ WG_IFACE = re.compile(r"^wg[0-9]{1,3}$")
 TUN_IFACE = re.compile(r"^(wg|ovpn)[0-9]{1,3}$")  # interfaces the firewall may reference
 ANY_IFACE = re.compile(r"^[a-zA-Z0-9_.:-]{1,15}$")
 BIN = {"wg": "/usr/bin/wg", "wg-quick": "/usr/bin/wg-quick", "ip": "/usr/sbin/ip", "ss": "/usr/bin/ss",
-       "nft": "/usr/sbin/nft", "systemctl": "/usr/bin/systemctl", "sysctl": "/usr/sbin/sysctl"}
+       "nft": "/usr/sbin/nft", "systemctl": "/usr/bin/systemctl", "sysctl": "/usr/sbin/sysctl",
+       "journalctl": "/usr/bin/journalctl"}
 
 
 class Invalid(ValueError):
@@ -378,6 +379,38 @@ def sys_status():
             "nftables": os.path.exists(BIN["nft"]), "kernel": os.uname().release}
 
 
+JOURNAL_UNIT = re.compile(r"^(vpnix-create-api|vpnix-create-helper|caddy|wg-quick@wg[0-9]{1,3}|openvpn-server@ovpn[0-9]{1,3})$")
+PRIORITY = {"error": "3", "warning": "4", "info": "6"}
+
+
+def sys_journal(units, lines=200, priority="info", since_hours=24):
+    """Read-only service logs for VPNix Create's own units (journald handles storage and rotation)."""
+    if not isinstance(units, list) or not 1 <= len(units) <= 20 or not all(isinstance(u, str) and JOURNAL_UNIT.match(u) for u in units):
+        raise Invalid("bad unit")
+    if not isinstance(lines, int) or isinstance(lines, bool) or not 1 <= lines <= 2000:
+        raise Invalid("bad lines")
+    if priority not in PRIORITY:
+        raise Invalid("bad priority")
+    if not isinstance(since_hours, int) or isinstance(since_hours, bool) or not 1 <= since_hours <= 24 * 30:
+        raise Invalid("bad since")
+    args = ["--no-pager", "-o", "json", "-n", str(lines), "-p", PRIORITY[priority], "--since", f"-{since_hours}h"]
+    for u in units:
+        args += ["-u", u]
+    r = run("journalctl", *args, check=False)
+    out = []
+    for line in r.stdout.splitlines():
+        try:
+            e = json.loads(line)
+        except ValueError:
+            continue
+        msg = e.get("MESSAGE", "")
+        if isinstance(msg, list):  # binary messages arrive as byte arrays
+            msg = bytes(x for x in msg if isinstance(x, int) and 0 <= x < 256).decode("utf-8", "replace")
+        out.append({"ts": int(e.get("__REALTIME_TIMESTAMP", "0")) // 1_000_000, "unit": e.get("_SYSTEMD_UNIT", ""),
+                    "priority": int(e.get("PRIORITY", 6)), "message": str(msg)[:2000]})
+    return {"entries": out}
+
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ovpn_ops  # noqa: E402  (installed next to this file)
 
@@ -396,6 +429,7 @@ METHODS = {
     "ovpn.delete": ovpn_ops.delete, "net.ovpn_interfaces": ovpn_interfaces,
     "fw.apply": fw_apply, "fw.confirm": fw_confirm, "fw.pending": fw_pending, "fw.ruleset": fw_ruleset,
     "fw.show": fw_show, "sys.forwarding": sys_forwarding, "sys.status": sys_status,
+    "sys.journal": sys_journal,
 }
 
 

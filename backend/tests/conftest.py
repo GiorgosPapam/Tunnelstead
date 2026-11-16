@@ -103,6 +103,10 @@ class FakeHelper:
             return {"ok": True}
         if method == "wg.dump":
             return {"running": True, "peers": self.dump.get(p["iface"], [])}
+        if method == "sys.journal":
+            self.journal_args = p
+            return {"entries": [{"ts": 1, "unit": "vpnix-create-api.service", "priority": 6, "message": "started"},
+                                {"ts": 2, "unit": "wg-quick@wg1.service", "priority": 3, "message": "Failed to start"}]}
         if method == "sys.status":
             return {"ipv4_forwarding": True, "ipv6_forwarding": True, "wireguard_tools": True, "nftables": True, "kernel": "6.8"}
         return {"ok": True}

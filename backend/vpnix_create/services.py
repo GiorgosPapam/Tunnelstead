@@ -213,3 +213,28 @@ def sync_firewall(db: DB, helper, rollback_seconds: int | None = None) -> dict:
     return helper.call("fw.apply", egress=egress, custom_rules=rules, management=mgmt, rollback_seconds=rollback_seconds, instances=[
         {"iface": i.iface, "port": i.listen_port, "transport": i.transport, "nat": i.nat,
          "isolate_clients": i.isolate_clients, "subnets": [s for s in (i.ipv4_cidr, i.ipv6_cidr) if s]} for i in insts])
+
+
+def resync_all(db: DB, helper, previous: list[tuple[str, str]] = ()) -> list[str]:
+    """After a restore: make the server match the database. Removes managed interfaces that are no longer in it
+    (`previous` = (protocol, iface) pairs that existed before), redeploys every instance and the firewall."""
+    from .engines.registry import engine as eng_for
+    errors, now = [], {i.iface: i for i in db.scalars(select(VpnInstance))}
+    for proto, iface in previous:
+        if iface not in now:
+            try:
+                eng_for(proto).delete(helper, type("I", (), {"iface": iface})())
+            except Exception as e:  # noqa: BLE001 - collected and reported
+                errors.append(f"remove {iface}: {e}")
+    for inst in now.values():
+        eng = eng_for(inst.protocol)
+        try:
+            sync(db, helper, inst)
+            (eng.start if inst.state == InstanceState.RUNNING else eng.stop)(helper, inst)
+        except Exception as e:  # noqa: BLE001
+            errors.append(f"{inst.name}: {e}")
+    try:
+        sync_firewall(db, helper)
+    except Exception as e:  # noqa: BLE001
+        errors.append(f"firewall: {e}")
+    return errors

@@ -5,7 +5,7 @@ from fastapi import FastAPI, Request
 
 from . import __version__
 from .config import get_settings
-from .routers import auth, firewall, system, users, vpn
+from .routers import auth, firewall, ops, system, users, vpn
 
 # Same-origin only: no CORS middleware is installed, so browsers block cross-origin API calls.
 HEADERS = {
@@ -48,7 +48,7 @@ def create_app() -> FastAPI:
         return resp
 
     # firewall before vpn: its specific /instances/{id}/routing must win over the generic /instances/{id}/{action}
-    for r in (auth.router, users.router, system.router, firewall.router, vpn.router):
+    for r in (auth.router, users.router, system.router, ops.router, firewall.router, vpn.router):
         app.include_router(r)
 
     @app.get("/api/health")

@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session as DB
 
-from .. import audit
+from .. import audit, notify
 from ..config import get_settings
 from ..db import get_db
 from ..deps import COOKIE, _aware, auth_limiter, client_ip, current_session, current_user
@@ -41,6 +41,8 @@ def _fail(db: DB, u: User) -> None:
         u.locked_until = utcnow() + timedelta(seconds=st.login_lockout_seconds)
         u.failed_logins = 0
         db.execute(delete(UserSession).where(UserSession.user_id == u.id, UserSession.mfa_pending.is_(True)))
+        notify.notify(db, "login_locked", f"Account {u.username} was locked for {st.login_lockout_seconds // 60} minutes "
+                      "after repeated failed sign-ins.", key=u.username)
 
 
 def _issue(db: DB, resp: Response, request: Request, u: User, mfa_pending: bool) -> str:

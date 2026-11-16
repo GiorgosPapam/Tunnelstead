@@ -10,6 +10,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     Enum,
+    Float,
     ForeignKey,
     Integer,
     String,
@@ -190,3 +191,30 @@ class FirewallRule(Base):
     comment: Mapped[str] = mapped_column(String(64), default="")
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class HostMetric(Base):
+    """One sample per collector cycle (30 s): host load and total VPN throughput. Kept 30 days."""
+    __tablename__ = "host_metrics"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    cpu: Mapped[float] = mapped_column(Float)
+    mem_used: Mapped[int] = mapped_column(BigInteger)
+    mem_total: Mapped[int] = mapped_column(BigInteger)
+    disk_used: Mapped[int] = mapped_column(BigInteger)
+    disk_total: Mapped[int] = mapped_column(BigInteger)
+    net_rx: Mapped[float] = mapped_column(Float)   # bytes/s, all interfaces
+    net_tx: Mapped[float] = mapped_column(Float)
+    clients_online: Mapped[int] = mapped_column(Integer)
+
+
+class InstanceMetric(Base):
+    """Per VPN server: throughput (bytes/s, from client counters), clients online and whether its service ran."""
+    __tablename__ = "instance_metrics"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    instance_id: Mapped[int] = mapped_column(ForeignKey("vpn_instances.id", ondelete="CASCADE"), index=True)
+    rx: Mapped[float] = mapped_column(Float)
+    tx: Mapped[float] = mapped_column(Float)
+    online: Mapped[int] = mapped_column(Integer)
+    up: Mapped[bool] = mapped_column(Boolean)
