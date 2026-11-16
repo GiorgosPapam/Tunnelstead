@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import os
 
 from fastapi import FastAPI, Request
 
@@ -38,7 +39,7 @@ async def lifespan(_app: FastAPI):
 
 def create_app() -> FastAPI:
     app = FastAPI(title="VPNix Create API", version=__version__, docs_url=None, redoc_url=None,
-                  openapi_url="/api/openapi.json", lifespan=lifespan)
+                  openapi_url="/api/openapi.json" if os.environ.get("VPNIX_DEV") == "1" else None, lifespan=lifespan)
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next):

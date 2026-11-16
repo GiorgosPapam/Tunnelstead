@@ -204,3 +204,19 @@ def test_helper_journal_bounds():
 
 def test_instance_model_unchanged_by_metrics(db, app):
     assert db.query(VpnInstance).count() == 0
+
+
+def test_openapi_hidden_in_production(app):
+    from fastapi.testclient import TestClient
+    assert TestClient(app).get("/api/openapi.json").status_code == 404
+
+
+@pytest.mark.parametrize("url", ["https://127.0.0.1/x", "https://localhost/x", "https://169.254.169.254/latest", "https://[::1]/x"])
+def test_webhook_refuses_local_targets(url):
+    with pytest.raises(ValueError, match="not allowed"):
+        notify.check_target(url)
+
+
+def test_webhook_errors_are_reported_not_raised(monkeypatch):
+    errs = notify.deliver({"webhook_url": "https://127.0.0.1/hook", "email": {}}, "t", "x")
+    assert errs and "not allowed" in errs[0]

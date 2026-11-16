@@ -121,8 +121,21 @@ if [[ -f /etc/caddy/Caddyfile ]] && ! grep -q "Managed by VPNix Create" /etc/cad
    && ! grep -q "^:80" /etc/caddy/Caddyfile; then
   die "/etc/caddy/Caddyfile has your own configuration. It was not changed; add VPNix Create manually (see docs/INSTALL.md)."
 fi
+# Caddy's admin API must not be reachable by other local users (it can rewrite the web server's config):
+# move it from TCP 127.0.0.1:2019 to a socket in a directory only the caddy user can enter.
+install -d -m 0755 /etc/systemd/system/caddy.service.d
+cat > /etc/systemd/system/caddy.service.d/vpnix-create.conf <<'DROPIN'
+# Managed by VPNix Create installer
+[Service]
+RuntimeDirectory=caddy
+RuntimeDirectoryMode=0700
+DROPIN
+systemctl daemon-reload
 cat > /etc/caddy/Caddyfile <<CADDY
 # Managed by VPNix Create installer. Port 80 redirects to HTTPS.
+{
+	admin unix//run/caddy/admin.sock
+}
 $SITE {
 	$TLS_LINE
 	encode gzip
@@ -147,7 +160,9 @@ $SITE {
 }
 CADDY
 caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1 || die "Generated Caddyfile is invalid"
-systemctl enable caddy >/dev/null 2>&1; systemctl reload-or-restart caddy
+systemctl enable caddy >/dev/null 2>&1
+# Reload when the running Caddy already uses the socket; otherwise (first run, admin address change) restart.
+if [[ -S /run/caddy/admin.sock ]]; then systemctl reload caddy || systemctl restart caddy; else systemctl restart caddy; fi
 ok "HTTPS on $SITE ($([[ -n "$DOMAIN" ]] && echo "Let's Encrypt" || echo "local CA: browsers warn once"))"
 
 # ---------- 15: health ----------

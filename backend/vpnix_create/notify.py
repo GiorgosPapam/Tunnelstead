@@ -10,6 +10,7 @@ import socket
 import ssl
 import threading
 import time
+import urllib.error
 import urllib.request
 from email.message import EmailMessage
 
@@ -69,14 +70,35 @@ def save_config(db: DB, webhook_url: str, email: dict, events: list[str], passwo
         db.add(Setting(key="notifications", value=value))
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *a, **kw):  # a redirect could point to http:// or an internal address
+        raise urllib.error.HTTPError(a[1] if len(a) > 1 else "", 0, "redirects are not followed", None, None)
+
+
+def check_target(url: str) -> None:
+    """Refuse webhook targets on this server or in link-local space (cloud metadata endpoints)."""
+    import ipaddress
+    import urllib.parse
+    host = urllib.parse.urlsplit(url).hostname or ""
+    try:
+        addrs = {ai[4][0] for ai in socket.getaddrinfo(host, 443, proto=socket.IPPROTO_TCP)}
+    except OSError as e:
+        raise ValueError(f"cannot resolve {host}: {e}") from None
+    for a in addrs:
+        ip = ipaddress.ip_address(a.split("%")[0])
+        if ip.is_loopback or ip.is_link_local or ip.is_unspecified or ip.is_multicast:
+            raise ValueError(f"webhook target {host} ({ip}) is not allowed")
+
+
 def _webhook(url: str, title: str, text: str) -> None:
     body = json.dumps({"text": f"*{title}*\n{text}", "content": f"**{title}**\n{text}", "title": title,
                        "message": text, "host": socket.gethostname(), "ts": int(time.time())}).encode()
     if not url.startswith("https://"):
         raise ValueError("webhook URL must use https")
+    check_target(url)
     headers = {"Content-Type": "application/json", "User-Agent": "VPNix-Create"}
     req = urllib.request.Request(url, data=body, method="POST", headers=headers)  # noqa: S310 - https checked above
-    with urllib.request.urlopen(req, timeout=8) as r:  # noqa: S310 - https checked above
+    with urllib.request.build_opener(_NoRedirect).open(req, timeout=8) as r:  # https and target checked above
         r.read(1024)
 
 
