@@ -11,3 +11,4 @@ ignore = ["B008"]  # FastAPI Depends() defaults are the framework idiom
 "helper/*.py" = ["S603"]  # argv lists only, never shell=True
 "backend/vpnix_create/testing.py" = ["E501"]
 "backend/tests/conftest.py" = ["E501"]
+"tests-e2e/**" = ["S603", "S607", "S101", "E501", "S104", "S310"]  # fixed http://127.0.0.1 API URL
