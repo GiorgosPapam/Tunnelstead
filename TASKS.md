@@ -21,12 +21,24 @@ Legend: [x] done and tested · [ ] pending · [~] in progress · [!] blocked (re
 - [x] Tests: 16 backend (auth, RBAC on every route, CLI, migrations), 7 browser (Playwright)
 - [x] Verified on Ubuntu 24.04 VPS: install, idempotent re-run, HTTPS, headers, anonymous access refused
 
-## Phase 2: WireGuard
-- [ ] Privileged helper with allowlist; WireGuard engine
-- [ ] Multiple instances; port/interface/subnet conflict detection; port recommendations (real availability)
-- [ ] Clients: create/edit/enable/disable/revoke/regenerate, tags, expiry, quotas
-- [ ] Config download + QR; handshake and transfer stats
-- [ ] Instance deployment wizard (10 steps) with review
+## Phase 2: WireGuard ✅
+- [x] Privileged helper (root, Unix socket 0660, hardened systemd unit): fixed allowlist, every argument validated
+      before any process runs or file changes, argv-only execution, refuses WireGuard interfaces it did not create
+- [x] Live-safe apply: full desired state per instance, applied with `wg syncconf` (other clients keep their sessions)
+- [x] Multiple WireGuard instances, independent start/stop/restart/delete (delete requires typing the name)
+- [x] Conflict detection against the DB and the live host: ports (real socket check), interface names (incl. foreign
+      WireGuard configs), subnet overlaps (other instances and host interfaces), names
+- [x] Recommendations for port, interface and subnet that skip anything in use on the server
+- [x] 10-step deployment wizard with live port check, DNS presets, full/split routing, NAT/isolation,
+      validation against the live server, configuration preview and leak warnings, advanced settings
+- [x] Clients: create/edit/enable/disable/revoke/regenerate/delete, description, tags, expiry, data quota,
+      per-client routes and DNS, bring-your-own public key, IPv4+IPv6 addresses
+- [x] Config download + QR code (secrets only for operator/admin, every download audited)
+- [x] Live statistics every 30 s (handshake, endpoint, traffic, history); expiry and quota enforced on the server
+- [x] Firewall: application-owned nftables table (dry-run checked first), forwarding, NAT, client isolation
+- [x] Onboarding checklist after first sign-in, based on live server state
+- [x] Tests: 41 backend (helper hostile input, conflicts, lifecycle, roles, rollback, enforcement), 10 browser,
+      27/27 real-host checks on Ubuntu 24.04 (tests-e2e/wireguard_e2e.py)
 
 ## Phase 3: OpenVPN
 - [ ] Engine, UDP/TCP, multiple instances, PKI, CRL revocation, cert expiry monitoring, .ovpn download

@@ -92,7 +92,7 @@ def collect():
         db.close()
 
 
-def netns_client(conf: str, public_ip: str):
+def netns_client(conf: str, public_ip: str, subnets: list[str]):
     teardown()
     sh("ip", "netns", "add", NS)
     sh("ip", "link", "add", VH, "type", "veth", "peer", "name", VC)
@@ -113,6 +113,8 @@ def netns_client(conf: str, public_ip: str):
     sh("ip", "link", "set", "wgc", "up", ns=True)
     # Only specific routes in the namespace (it has no default route); full-tunnel NAT is exercised via 1.1.1.1.
     sh("ip", "route", "add", "1.1.1.1/32", "dev", "wgc", ns=True)
+    for net in subnets:  # what a WireGuard app derives from AllowedIPs for the tunnel networks
+        sh("ip", "-6" if ":" in net else "-4", "route", "add", net, "dev", "wgc", ns=True)
 
 
 def teardown():
@@ -170,7 +172,7 @@ def main():
         check("client on live interface", cl["public_key"] in sh("wg", "show", a["iface"], "peers").stdout)
         s, conf = api.req("GET", f"/api/clients/{cl['id']}/config")
         try:
-            netns_client(conf, public_ip)
+            netns_client(conf, public_ip, [a["ipv4_cidr"], a["ipv6_cidr"]])
             gw4 = a["ipv4_cidr"].rsplit(".", 1)[0] + ".1"
             gw6 = a["ipv6_cidr"].split("/")[0] + "1"
             check(f"client reaches server over IPv4 ({gw4})", ping(gw4))
