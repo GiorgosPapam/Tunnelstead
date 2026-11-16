@@ -38,14 +38,26 @@ def status():
         return {}
 
 
-def wait_status(states, timeout=600):
+def updater_busy():
+    out = subprocess.run(["systemctl", "list-units", "--no-legend", "--state=activating,active,reloading",
+                          "vpnix-create-updater@*"], capture_output=True, text=True).stdout
+    return bool(out.strip())
+
+
+def wait_status(states, after: str, timeout=600):
+    """Wait for a status written after `after` (ISO time) in one of `states`, with no updater still running."""
     end = time.time() + timeout
     while time.time() < end:
         st = status()
-        if st.get("state") in states and subprocess.run(["systemctl", "is-active", "--quiet", "vpnix-create-updater@*"]).returncode:
+        if st.get("updated_at", "") > after and st.get("state") in states and not updater_busy():
             return st
         time.sleep(3)
     return status()
+
+
+def now_iso():
+    from datetime import UTC, datetime
+    return datetime.now(UTC).isoformat()
 
 
 def login(admin, pw):
@@ -105,9 +117,10 @@ def main():
         check("dashboard offers the newest signed release", s == 200 and o["check"]["latest"]["version"] == "0.1.2", str(o.get("check", o))[:150])
         s, d = api.req("POST", "/api/updates/0.1.1/download")
         check("download verified by the API", s == 200 and d["verified"], str(d)[:120])
+        t0 = now_iso()
         s, r = api.req("POST", "/api/updates/0.1.1/install")
         check("install started", s == 202, str(r)[:120])
-        st = wait_status({"success", "failed", "rolled_back"})
+        st = wait_status({"success", "failed", "rolled_back"}, t0)
         check("update to 0.1.1 succeeded", st.get("state") == "success" and version() == "0.1.1", f"{st.get('state')} {st.get('error', '')}")
         check("VPN server kept running", wg_running(inst["iface"]))
         api = login(admin, pw)
@@ -126,9 +139,10 @@ def main():
         check("rollback still offered after the refused downgrade", o.get("rollback_to") == "0.1.0", str(o.get("rollback_to")))
 
         # 4. manual rollback through the dashboard
+        t0 = now_iso()
         s, _ = api.req("POST", "/api/updates/rollback")
         check("rollback started", s == 202)
-        st = wait_status({"rolled_back", "failed"}) if s == 202 else status()
+        st = wait_status({"rolled_back", "failed"}, t0) if s == 202 else status()
         check("rolled back to 0.1.0", st.get("state") == "rolled_back" and version() == "0.1.0", f"{st.get('state')} {st.get('error', '')}")
         check("VPN server running after rollback", wg_running(inst["iface"]))
 

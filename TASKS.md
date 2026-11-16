@@ -78,8 +78,17 @@ Legend: [x] done and tested · [ ] pending · [~] in progress · [!] blocked (re
 - [x] Fix: CSRF token is re-fetched after a page reload (GET /api/auth/csrf)
 - [x] Tests: 91 backend, 18 browser; real host: ops 23/23, firewall 12/12, WireGuard 27/27, OpenVPN 25/25
 
-## Phase 6: Updates
-- [ ] Signed GitHub releases, checks, notify, install now / schedule, rollback, downgrade protection
+## Phase 6: Updates ✅
+- [x] Ed25519 release signing (tools/release.py); signature binds version + SHA-256 (no relabelled old bundles)
+- [x] Public key shipped in installer/release-key.pub; private key kept outside the repo by the maintainer
+- [x] GitHub releases check (stable only, needs bundle + .sig assets), release notes, 6 h cache, "update available" alert
+- [x] Download + verify (API), then root updater re-verifies its own private copy, safe extraction (no links/paths outside)
+- [x] Snapshot (/opt + database) before install, health check of the new version, automatic rollback on failure
+- [x] Manual rollback to the snapshot; downgrades refused; one update at a time (lock)
+- [x] Settings: off / notify / auto install in a day + hour window (each version tried once)
+- [x] Updates page with live progress; installer/update.sh for the command line; --domain kept across re-runs/updates
+- [x] Fixes found on the VPS: scripts lost their exec bit; a refused attempt hid the rollback
+- [x] Tests: 106 backend, 20 browser; real host: update 22/22, ops 23/23, firewall 12/12, WireGuard 27/27, OpenVPN 25/25
 
 ## Phase 7: Release
 - [ ] Security hardening pass, CI/CD (tests, lint, types, audit, secrets, SAST), docs, release
