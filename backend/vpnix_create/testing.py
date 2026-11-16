@@ -11,8 +11,28 @@ from .config import get_settings
 class SimulatedHost:
     peers: dict = {}
     services: dict = {}
+    fw_token: str | None = None
 
     def call(self, method, **p):
+        import secrets
+        if method == "fw.apply":
+            if p.get("rollback_seconds"):
+                SimulatedHost.fw_token = secrets.token_hex(8)
+                return {"ok": True, "confirm_token": SimulatedHost.fw_token, "rollback_seconds": p["rollback_seconds"]}
+            return {"ok": True}
+        if method == "fw.confirm":
+            from .helper_client import HelperError
+            if p["token"] != SimulatedHost.fw_token:
+                raise HelperError("invalid request: nothing to confirm")
+            SimulatedHost.fw_token = None
+            return {"ok": True}
+        if method == "fw.pending":
+            return {"pending": SimulatedHost.fw_token is not None, "seconds_left": 60}
+        own = "table inet vpnix_create {\n\tchain input {\n\t\tudp dport 51820 accept\n\t}\n}\n"
+        if method == "fw.show":
+            return {"ruleset": own}
+        if method == "fw.ruleset":
+            return {"ruleset": "table inet filter {\n\tchain input { type filter hook input priority 0; policy accept; }\n}\n" + own}
         if method == "net.interfaces":
             return {"default": "eth0", "interfaces": [{"name": "eth0", "up": True, "managed_wg": False, "addresses": ["203.0.113.10/24"]}]}
         if method == "net.wg_interfaces":

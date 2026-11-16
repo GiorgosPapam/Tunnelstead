@@ -193,11 +193,23 @@ def sync(db: DB, helper, inst: VpnInstance) -> None:
     sync_firewall(db, helper)
 
 
-def sync_firewall(db: DB, helper) -> None:
+def firewall_config(db: DB) -> tuple[list[dict], dict | None]:
+    from .models import FirewallRule, Setting
+    rules = [{"action": r.action, "proto": r.proto, "ports": r.ports, "source": r.source, "comment": r.comment}
+             for r in db.scalars(select(FirewallRule).where(FirewallRule.enabled.is_(True)).order_by(FirewallRule.position, FirewallRule.id))]
+    m = db.get(Setting, "management")
+    mgmt = None
+    if m and m.value.get("enabled") and m.value.get("networks"):
+        mgmt = {"networks": m.value["networks"], "ports": [80, 443] + ([22] if m.value.get("include_ssh") else [])}
+    return rules, mgmt
+
+
+def sync_firewall(db: DB, helper, rollback_seconds: int | None = None) -> dict:
     insts = list(db.scalars(select(VpnInstance).where(VpnInstance.state == InstanceState.RUNNING)))
     egress = next((i.egress_iface for i in insts if i.egress_iface), None)
     if any(i.nat for i in insts):
         helper.call("sys.forwarding", ipv4=True, ipv6=any(i.ipv6_cidr for i in insts))
-    helper.call("fw.apply", egress=egress, instances=[
+    rules, mgmt = firewall_config(db)
+    return helper.call("fw.apply", egress=egress, custom_rules=rules, management=mgmt, rollback_seconds=rollback_seconds, instances=[
         {"iface": i.iface, "port": i.listen_port, "transport": i.transport, "nat": i.nat,
          "isolate_clients": i.isolate_clients, "subnets": [s for s in (i.ipv4_cidr, i.ipv6_cidr) if s]} for i in insts])

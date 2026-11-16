@@ -118,3 +118,41 @@ def helper(app):
 
 WG1 = {"name": "WG-Primary", "iface": "wg1", "listen_port": 51821, "endpoint_host": "vpn.example.org",
        "ipv4_cidr": "10.8.0.0/24", "ipv6_cidr": "fd08:8::/64", "dns": ["1.1.1.1"]}
+
+
+def _fw_extras(self, method, p):
+    import secrets
+    if method == "fw.apply":
+        self.fw_applied.append(p)
+        if p.get("rollback_seconds"):
+            self.fw_token = secrets.token_hex(8)
+            return {"ok": True, "confirm_token": self.fw_token, "rollback_seconds": p["rollback_seconds"]}
+        return {"ok": True}
+    if method == "fw.confirm":
+        from vpnix_create.helper_client import HelperError
+        if p["token"] != self.fw_token:
+            raise HelperError("invalid request: nothing to confirm")
+        self.fw_token = None
+        return {"ok": True}
+    if method == "fw.pending":
+        return {"pending": self.fw_token is not None, "seconds_left": 30}
+    if method in ("fw.show", "fw.ruleset"):
+        return {"ruleset": "table inet vpnix_create {\n udp dport 51821 accept\n masquerade\n}"}
+    return None
+
+
+_orig_call = FakeHelper.call
+
+
+def _call(self, method, **p):
+    if not hasattr(self, "fw_applied"):
+        self.fw_applied, self.fw_token = [], None
+    if not self.fail:
+        r = _fw_extras(self, method, p)
+        if r is not None:
+            self.calls.append((method, p))
+            return r
+    return _orig_call(self, method, **p)
+
+
+FakeHelper.call = _call

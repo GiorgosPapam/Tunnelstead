@@ -208,13 +208,28 @@ def wg_dump(iface):
 
 
 # ---------------------------------------------------------------- firewall / routing
-def fw_apply(instances, egress=None):
-    """Replace ONLY the application's own nftables table, atomically. Never touches other tables.
-    instances: [{iface, port, transport, subnets[], nat: bool, isolate_clients: bool}]"""
+COMMENT = re.compile(r"^[A-Za-z0-9 _.,:()-]{0,64}$")
+_pending = {"token": None, "timer": None, "deadline": None}
+_pending_lock = __import__("threading").Lock()
+
+
+def _v_ports(x):
+    """None, a port, or "low-high"."""
+    if x is None:
+        return None
+    if isinstance(x, int):
+        return str(v_port(x))
+    m = re.fullmatch(r"(\d{1,5})-(\d{1,5})", str(x))
+    if not m or not 1 <= int(m[1]) < int(m[2]) <= 65535:
+        raise Invalid("bad port range")
+    return f"{int(m[1])}-{int(m[2])}"
+
+
+def _render(instances, egress, custom_rules, management):
     if not isinstance(instances, list) or len(instances) > 256:
         raise Invalid("bad instance list")
     egress = v_iface(egress) if egress else None
-    accept_in, fwd, nat = [], [], []
+    accept_in, fwd, nat, guard, custom = [], [], [], [], []
     for i in instances:
         if not isinstance(i.get("iface"), str) or not TUN_IFACE.match(i["iface"]):
             raise Invalid("firewall entries must reference a managed tunnel interface")
@@ -231,16 +246,109 @@ def fw_apply(instances, egress=None):
             for n in nets:
                 fam = "ip" if ipaddress.ip_network(n).version == 4 else "ip6"
                 nat.append(f'    {fam} saddr {n} oifname "{egress}" masquerade')
+    if management:  # only these networks may reach the management ports
+        mports = sorted({v_port(p) for p in management.get("ports", [])})
+        nets = [ipaddress.ip_network(n, strict=False) for n in management.get("networks", [])][:64]
+        if mports and nets:
+            plist = ", ".join(map(str, mports))
+            for fam, ver in (("ip", 4), ("ip6", 6)):
+                allowed = ", ".join(str(n) for n in nets if n.version == ver)
+                guard.append(f"    meta nfproto {'ipv4' if ver == 4 else 'ipv6'} tcp dport {{ {plist} }} "
+                             + (f"{fam} saddr != {{ {allowed} }} drop" if allowed else "drop"))
+    for r in custom_rules or []:
+        if len(custom) >= 256:
+            raise Invalid("too many rules")
+        action = r.get("action")
+        if action not in ("accept", "drop"):
+            raise Invalid("action must be accept or drop")
+        proto, ports = r.get("proto", "tcp"), _v_ports(r.get("ports"))
+        if proto not in ("tcp", "udp", "any") or (ports and proto == "any"):
+            raise Invalid("bad protocol (ports need tcp or udp)")
+        comment = r.get("comment", "")
+        if not isinstance(comment, str) or not COMMENT.match(comment):
+            raise Invalid("bad comment")
+        parts = []
+        if r.get("source"):
+            n = ipaddress.ip_network(r["source"], strict=False)
+            parts.append(f"{'ip' if n.version == 4 else 'ip6'} saddr {n}")
+        if proto != "any":
+            parts.append(f"{proto} dport {ports}" if ports else f"meta l4proto {proto}")
+        custom.append("    " + " ".join(parts + [action] + ([f'comment "{comment}"'] if comment else [])))
     rules = "\n".join([
         f"table inet {NFT_TABLE}", f"delete table inet {NFT_TABLE}", f"table inet {NFT_TABLE} {{",
-        "  chain input {", "    type filter hook input priority 0; policy accept;", *accept_in, "  }",
+        "  chain input {", "    type filter hook input priority 0; policy accept;",
+        "    ct state established,related accept", '    iif "lo" accept', *guard, *custom, *accept_in, "  }",
         "  chain forward {", "    type filter hook forward priority 0; policy accept;",
         "    ct state established,related accept", *fwd,
         '    iifname { "wg*", "ovpn*" } drop  # anything else from a managed tunnel (client-to-client) is refused', "  }",
         "  chain postrouting {", "    type nat hook postrouting priority 100;", *nat, "  }", "}"])
-    run("nft", "-c", "-f", "-", stdin=rules)  # dry-run check first: an invalid ruleset changes nothing
+    return rules, len(accept_in) + len(fwd) + len(nat) + len(guard) + len(custom)
+
+
+def _current_table() -> str:
+    r = run("nft", "list", "table", "inet", NFT_TABLE, check=False)
+    return r.stdout if r.returncode == 0 else ""
+
+
+def _restore(saved: str) -> None:
+    text = f"table inet {NFT_TABLE}\ndelete table inet {NFT_TABLE}\n" + saved
+    run("nft", "-f", "-", stdin=text)
+
+
+def fw_apply(instances, egress=None, custom_rules=None, management=None, rollback_seconds=None):
+    """Replace ONLY the application's own nftables table, atomically (dry-run checked first).
+    With rollback_seconds, the previous table is restored automatically unless fw.confirm(token) arrives in time:
+    a rule that locks the administrator out undoes itself even if the dashboard becomes unreachable."""
+    import threading
+    rules, count = _render(instances, egress, custom_rules, management)
+    if rollback_seconds is not None and not (isinstance(rollback_seconds, int) and 15 <= rollback_seconds <= 600):
+        raise Invalid("rollback window must be 15-600 seconds")
+    run("nft", "-c", "-f", "-", stdin=rules)
+    saved = _current_table()
     run("nft", "-f", "-", stdin=rules)
-    return {"ok": True, "rules": len(accept_in) + len(fwd) + len(nat)}
+    if not rollback_seconds:
+        return {"ok": True, "rules": count}
+    import secrets as _secrets
+    import time as _time
+    token = _secrets.token_hex(16)
+
+    def revert():
+        with _pending_lock:
+            if _pending["token"] != token:
+                return
+            _pending.update(token=None, timer=None, deadline=None)
+        _restore(saved)
+
+    with _pending_lock:
+        if _pending["timer"]:
+            _pending["timer"].cancel()
+        t = threading.Timer(rollback_seconds, revert)
+        t.daemon = True
+        _pending.update(token=token, timer=t, deadline=_time.time() + rollback_seconds)
+        t.start()
+    return {"ok": True, "rules": count, "confirm_token": token, "rollback_seconds": rollback_seconds}
+
+
+def fw_confirm(token):
+    with _pending_lock:
+        if not isinstance(token, str) or token != _pending["token"]:
+            raise Invalid("nothing to confirm (the change may already have been rolled back)")
+        _pending["timer"].cancel()
+        _pending.update(token=None, timer=None, deadline=None)
+    return {"ok": True}
+
+
+def fw_pending():
+    import time as _time
+    with _pending_lock:
+        d = _pending["deadline"]
+        return {"pending": d is not None, "seconds_left": max(0, int(d - _time.time())) if d else 0}
+
+
+def fw_ruleset():
+    """Read-only view of the whole host ruleset (all tables), for display."""
+    r = run("nft", "list", "ruleset", check=False)
+    return {"ruleset": r.stdout[:200000]}
 
 
 def fw_show():
@@ -284,7 +392,8 @@ METHODS = {
     "wg.sync": wg_sync, "wg.service": wg_service, "wg.delete": wg_delete, "wg.dump": wg_dump,
     "ovpn.apply": ovpn_ops.apply, "ovpn.service": ovpn_ops.service, "ovpn.status": ovpn_ops.status,
     "ovpn.delete": ovpn_ops.delete, "net.ovpn_interfaces": ovpn_interfaces,
-    "fw.apply": fw_apply, "fw.show": fw_show, "sys.forwarding": sys_forwarding, "sys.status": sys_status,
+    "fw.apply": fw_apply, "fw.confirm": fw_confirm, "fw.pending": fw_pending, "fw.ruleset": fw_ruleset,
+    "fw.show": fw_show, "sys.forwarding": sys_forwarding, "sys.status": sys_status,
 }
 
 

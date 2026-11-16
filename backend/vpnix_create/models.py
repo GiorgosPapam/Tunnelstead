@@ -176,3 +176,17 @@ class RetiredCert(Base):
     instance_id: Mapped[int] = mapped_column(ForeignKey("vpn_instances.id", ondelete="CASCADE"), index=True)
     cert_enc: Mapped[str] = mapped_column(Text)
     retired_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class FirewallRule(Base):
+    """Administrator-defined input rule, applied inside the application's own nftables table only."""
+    __tablename__ = "firewall_rules"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    action: Mapped[str] = mapped_column(String(6))          # accept | drop
+    proto: Mapped[str] = mapped_column(String(3))           # tcp | udp | any
+    ports: Mapped[str | None] = mapped_column(String(11), nullable=True)   # "443" or "8000-8100"
+    source: Mapped[str | None] = mapped_column(String(43), nullable=True)  # CIDR (IPv4 or IPv6)
+    comment: Mapped[str] = mapped_column(String(64), default="")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

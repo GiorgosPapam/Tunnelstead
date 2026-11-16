@@ -54,6 +54,8 @@ def collect(db: DB, helper) -> dict:
             db.add(ClientStat(client_id=c.id, rx_bytes=c.rx_bytes, tx_bytes=c.tx_bytes))
             out["clients_updated"] += 1
     db.commit()
+    from .routers.firewall import reconcile
+    reconcile(db, helper)
     out["blocked"] = enforce(db, helper)
     return out
 

@@ -64,9 +64,9 @@ def test_firewall_only_replaces_own_table(monkeypatch):
     out = call("fw.apply", instances=[{"iface": "wg0", "port": 51820, "subnets": ["10.8.0.0/24", "fd00:8::/64"],
                                        "nat": True, "isolate_clients": True}], egress="eth0")
     assert out["result"]["ok"]
-    check, apply = seen
-    assert check[0][:3] == ["/usr/sbin/nft", "-c", "-f"] and apply[0][:2] == ["/usr/sbin/nft", "-f"]  # dry run first
-    rules = apply[1]
+    nft = [(argv, inp) for argv, inp in seen if argv[0] == "/usr/sbin/nft"]
+    assert nft[0][0][:3] == ["/usr/sbin/nft", "-c", "-f"]  # dry run first
+    rules = next(inp for argv, inp in nft if argv[:2] == ["/usr/sbin/nft", "-f"])
     tables = set(re.findall(r"table inet (\S+)", rules))
     assert tables == {"vpnix_create"}  # nothing outside the application's own table
     assert "udp dport 51820 accept" in rules and 'ip saddr 10.8.0.0/24 oifname "eth0" masquerade' in rules
@@ -130,3 +130,66 @@ def test_ovpn_refuses_foreign_instance(tmp_path, monkeypatch):
     assert "not managed" in call("ovpn.apply", **OVPN)["error"]
     assert "not managed" in call("ovpn.delete", iface="ovpn0")["error"]
     assert (tmp_path / "ovpn0.conf").read_text() == "port 1194\n"
+
+
+
+class _R:
+    returncode, stdout, stderr = 0, "", ""
+
+
+@pytest.fixture
+def nft_log(monkeypatch):
+    seen = []
+
+    def fake(argv, input=None, **k):
+        seen.append((argv, input))
+        r = _R()
+        if argv[1:3] == ["list", "table"]:
+            r.stdout = "table inet vpnix_create { # previous\n}\n"
+        return r
+    monkeypatch.setattr(helper.subprocess, "run", fake)
+    return seen
+
+
+def _applied(seen):
+    return [inp for argv, inp in seen if argv[:2] == ["/usr/sbin/nft", "-f"]]
+
+
+def test_custom_rules_and_management_rendered(nft_log):
+    out = call("fw.apply", instances=[], custom_rules=[
+        {"action": "accept", "proto": "tcp", "ports": "8000-8100", "source": "198.51.100.0/24", "comment": "office"},
+        {"action": "drop", "proto": "udp", "ports": 53, "source": "2001:db8::/32"},
+        {"action": "drop", "proto": "any", "source": "203.0.113.9"}],
+        management={"ports": [443, 80], "networks": ["192.0.2.0/24", "2001:db8:1::/48"]})
+    assert out["result"]["ok"]
+    rules = _applied(nft_log)[0]
+    assert 'ip saddr 198.51.100.0/24 tcp dport 8000-8100 accept comment "office"' in rules
+    assert "ip6 saddr 2001:db8::/32 udp dport 53 drop" in rules and "ip saddr 203.0.113.9/32 drop" in rules
+    assert "meta nfproto ipv4 tcp dport { 80, 443 } ip saddr != { 192.0.2.0/24 } drop" in rules
+    assert "meta nfproto ipv6 tcp dport { 80, 443 } ip6 saddr != { 2001:db8:1::/48 } drop" in rules
+    assert rules.index("ip saddr != { 192.0.2.0/24 }") < rules.index('comment "office"')  # guard first
+
+
+@pytest.mark.parametrize("rule", [
+    {"action": "reject", "proto": "tcp"}, {"action": "drop", "proto": "icmp"},
+    {"action": "drop", "proto": "any", "ports": 22},
+    {"action": "drop", "proto": "tcp", "ports": "22; flush ruleset"},
+    {"action": "drop", "proto": "tcp", "comment": 'x" accept'},
+    {"action": "drop", "proto": "tcp", "source": "not-a-net"},
+])
+def test_custom_rule_injection_rejected(no_exec, rule):
+    assert "invalid request" in call("fw.apply", instances=[], custom_rules=[rule])["error"]
+
+
+def test_timed_rollback_restores_previous_table_unless_confirmed(nft_log):
+    r = call("fw.apply", instances=[], custom_rules=[{"action": "drop", "proto": "tcp", "ports": 443}], rollback_seconds=60)
+    token = r["result"]["confirm_token"]
+    assert call("fw.pending")["result"]["pending"] is True
+    assert "invalid request" in call("fw.confirm", token="wrong")["error"]
+    assert call("fw.confirm", token=token)["result"]["ok"]
+    assert call("fw.pending")["result"]["pending"] is False
+    r = call("fw.apply", instances=[], custom_rules=[{"action": "drop", "proto": "tcp", "ports": 443}], rollback_seconds=60)
+    helper._pending["timer"].cancel()
+    helper._pending["timer"].function()  # the deadline passes without confirmation
+    assert "# previous" in _applied(nft_log)[-1]  # the saved table was put back
+    assert call("fw.pending")["result"]["pending"] is False
