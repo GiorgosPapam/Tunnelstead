@@ -193,3 +193,12 @@ def test_timed_rollback_restores_previous_table_unless_confirmed(nft_log):
     helper._pending["timer"].function()  # the deadline passes without confirmation
     assert "# previous" in _applied(nft_log)[-1]  # the saved table was put back
     assert call("fw.pending")["result"]["pending"] is False
+
+
+def test_fw_ports_accepts_single_port_string():
+    assert helper._v_ports("8443") == "8443"
+    assert helper._v_ports(8443) == "8443"
+    assert helper._v_ports("8000-8100") == "8000-8100"
+    for bad in ("0", "70000", "8100-8000", "80;drop", "80 443"):
+        with pytest.raises(helper.Invalid):
+            helper._v_ports(bad)

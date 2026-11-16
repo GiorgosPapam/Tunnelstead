@@ -219,6 +219,8 @@ def _v_ports(x):
         return None
     if isinstance(x, int):
         return str(v_port(x))
+    if isinstance(x, str) and re.fullmatch(r"\d{1,5}", x):
+        return str(v_port(int(x)))
     m = re.fullmatch(r"(\d{1,5})-(\d{1,5})", str(x))
     if not m or not 1 <= int(m[1]) < int(m[2]) <= 65535:
         raise Invalid("bad port range")
