@@ -1,4 +1,4 @@
-# VPNix Manager: Task Checklist
+# Tunnelstead: Task Checklist
 
 Legend: [x] done and tested · [ ] pending · [~] in progress · [!] blocked (reason given)
 
@@ -13,7 +13,7 @@ Legend: [x] done and tested · [ ] pending · [~] in progress · [!] blocked (re
 - [x] RBAC: admin / operator / viewer, enforced per route; last active admin protected
 - [x] Hash-chained audit log with integrity check, filtering, search and CSV export
 - [x] First install: random admin password from the installer CLI, printed once in the terminal, never via HTTP;
-      `vpnix-manager-cli reset-admin` for recovery
+      `tunnelstead-cli reset-admin` for recovery
 - [x] Installer (Phase 1 scope): OS/arch/kernel/resource checks, packages, service user, directories and permissions,
       secrets, migrations, hardened systemd unit (exposure 1.4), Caddy HTTPS with security headers, health check; idempotent
 - [x] Glass top navigation (desktop + mobile), dark/light themes, keyboard and screen-reader support
@@ -58,7 +58,7 @@ Legend: [x] done and tested · [ ] pending · [~] in progress · [!] blocked (re
 ## Phase 4: Routing & Firewall ✅
 - [x] Networks page: per-server health/leak checks (forwarding, NAT, IPv6, DNS, port open, route conflicts)
 - [x] Routing presets (full, VPN-only, LAN, custom) with before/after preview and affected-client list
-- [x] Firewall page: custom allow/block rules in the app-owned `inet vpnix_manager` table only
+- [x] Firewall page: custom allow/block rules in the app-owned `inet tunnelstead` table only
 - [x] Strict validation in API and helper (rejects injection), `nft -c` dry run before apply
 - [x] Every change auto-rolls back after 60 s unless "Keep changes" is pressed; dashboard reconciles
 - [x] Management-access restriction with lock-out detection and explicit risk acknowledgement
@@ -94,7 +94,7 @@ Legend: [x] done and tested · [ ] pending · [~] in progress · [!] blocked (re
 - [x] Security audit: pip-audit and npm audit clean, no secrets in git history, systemd exposure (API 1.4, helper 5.7), ports, headers, file permissions
 - [x] Fix: Caddy admin API was reachable by any local user over TCP 2019 → private Unix socket (0700 dir)
 - [x] Fix: OpenAPI description no longer public; webhooks refuse local/link-local targets and redirects
-- [x] uninstall.sh (keeps data by default, --purge, --dry-run; only removes what VPNix Manager created)
+- [x] uninstall.sh (keeps data by default, --purge, --dry-run; only removes what Tunnelstead created)
 - [x] Types: mypy clean (36 files, pydantic plugin); 26 type issues fixed (incl. CA key type check)
 - [x] CI: ruff, mypy, pytest, Playwright, shellcheck, pip-audit, npm audit, gitleaks, CodeQL, Dependabot; release signature verification
 - [x] Docs: README, INSTALL, OPERATIONS, SECURITY, ARCHITECTURE (updated), RELEASING, CONTRIBUTING, CHANGELOG, Apache-2.0 LICENSE

@@ -62,7 +62,7 @@ def consteq(a: str, b: str) -> bool:
 def _key() -> bytes:
     raw = base64.urlsafe_b64decode(get_settings().secret_key + "==")
     if len(raw) != 32:
-        raise RuntimeError("VPNIX_SECRET_KEY must be 32 bytes (base64url)")
+        raise RuntimeError("TUNNELSTEAD_SECRET_KEY must be 32 bytes (base64url)")
     return raw
 
 

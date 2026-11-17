@@ -38,7 +38,7 @@ test("Notifications: https only, saved, password never shown", async ({ page }) 
   await page.getByLabel("Webhook URL").fill("http://insecure.example");
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByText(/must start with https/)).toBeVisible();
-  await page.getByLabel("Webhook URL").fill("https://hooks.example.org/vpnix");
+  await page.getByLabel("Webhook URL").fill("https://hooks.example.org/tunnelstead");
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByText("Notification settings saved.")).toBeVisible();
 });
@@ -51,7 +51,7 @@ test("Backups: create, verify, restore and sign in again", async ({ page }) => {
   await page.getByRole("dialog").getByLabel("Passphrase", { exact: true }).fill(PASS);
   await page.getByLabel("Repeat passphrase").fill(PASS);
   await page.getByRole("button", { name: "Create backup" }).click();
-  await expect(page.getByText(/Backup vpnix-backup-.*-manual\.vbk created/)).toBeVisible();
+  await expect(page.getByText(/Backup tunnelstead-backup-.*-manual\.tsbk created/)).toBeVisible();
   await page.screenshot({ path: "test-results/screens/backups.png", fullPage: true });
 
   await page.getByRole("button", { name: "Restore" }).first().click();
@@ -67,7 +67,7 @@ test("Backups: create, verify, restore and sign in again", async ({ page }) => {
   await page.getByLabel("Type the backup name to confirm").fill(name);
   await dialog.getByRole("button", { name: "Restore now" }).click();
   await expect(page.getByText("Restore complete")).toBeVisible();
-  await expect(page.getByRole("dialog").getByText(/pre-restore\.vbk/)).toBeVisible();
+  await expect(page.getByRole("dialog").getByText(/pre-restore\.tsbk/)).toBeVisible();
   await page.getByRole("button", { name: "Sign in again" }).click();
   await signIn(page);
   await page.goto("/servers");

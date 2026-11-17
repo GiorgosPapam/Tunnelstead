@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session as DB
 from .models import Setting
 from .security import decrypt, encrypt
 
-log = logging.getLogger("vpnix.notify")
+log = logging.getLogger("tunnelstead.notify")
 REPEAT_AFTER = 6 * 3600
 EVENTS = {
     "instance_down": "A VPN server stopped running",
@@ -29,8 +29,8 @@ EVENTS = {
     "disk_full": "Disk usage is above 90 %",
     "login_locked": "An account was locked after failed sign-ins",
     "firewall_rolled_back": "A firewall change was not kept and was undone",
-    "update_available": "A new VPNix Manager version is available",
-    "update_done": "VPNix Manager was updated",
+    "update_available": "A new Tunnelstead version is available",
+    "update_done": "Tunnelstead was updated",
     "update_failed": "An update failed (the previous version keeps running)",
     "backup_ok": "A scheduled backup was created",
     "backup_failed": "A scheduled backup failed",
@@ -96,7 +96,7 @@ def _webhook(url: str, title: str, text: str) -> None:
     if not url.startswith("https://"):
         raise ValueError("webhook URL must use https")
     check_target(url)
-    headers = {"Content-Type": "application/json", "User-Agent": "VPNix-Manager"}
+    headers = {"Content-Type": "application/json", "User-Agent": "Tunnelstead"}
     req = urllib.request.Request(url, data=body, method="POST", headers=headers)  # noqa: S310 - https checked above
     with urllib.request.build_opener(_NoRedirect).open(req, timeout=8) as r:  # https and target checked above
         r.read(1024)
@@ -104,7 +104,7 @@ def _webhook(url: str, title: str, text: str) -> None:
 
 def _email(cfg: dict, title: str, text: str) -> None:
     msg = EmailMessage()
-    msg["Subject"], msg["From"], msg["To"] = f"[VPNix Manager] {title}", cfg["sender"], ", ".join(cfg["recipients"])
+    msg["Subject"], msg["From"], msg["To"] = f"[Tunnelstead] {title}", cfg["sender"], ", ".join(cfg["recipients"])
     msg.set_content(f"{text}\n\nServer: {socket.gethostname()}\n")
     port = int(cfg.get("port") or 587)
     ctx = ssl.create_default_context()

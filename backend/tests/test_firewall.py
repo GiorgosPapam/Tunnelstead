@@ -1,6 +1,6 @@
 import time
 
-from vpnix_manager.models import Role, Setting
+from tunnelstead.models import Role, Setting
 
 from tests.conftest import WG1, login, make_user
 

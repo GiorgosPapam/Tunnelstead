@@ -1,4 +1,4 @@
-"""Runtime settings, read from the environment (VPNIX_*) or the root-owned env file. No secrets in code."""
+"""Runtime settings, read from the environment (TUNNELSTEAD_*) or the root-owned env file. No secrets in code."""
 from functools import lru_cache
 from pathlib import Path
 
@@ -6,10 +6,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="VPNIX_", extra="ignore",
+    model_config = SettingsConfigDict(env_prefix="TUNNELSTEAD_", extra="ignore",
                                       env_file=(Path(__file__).resolve().parents[1] / ".env", ".env"))
 
-    database_url: str = "sqlite:////var/lib/vpnix-manager/vpnix.db"
+    database_url: str = "sqlite:////var/lib/tunnelstead/tunnelstead.db"
     secret_key: str  # 32 bytes, base64url; AES-256-GCM key for secrets at rest (required)
     cookie_secure: bool = True
     session_ttl_minutes: int = 12 * 60
@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     login_max_failures: int = 5
     login_lockout_seconds: int = 900
     auth_rate_per_minute: int = 10  # per client IP, for sign-in / 2FA / password-change endpoints
-    helper_socket: str = "/run/vpnix-manager/helper.sock"
+    helper_socket: str = "/run/tunnelstead/helper.sock"
     background_jobs: bool = True
 
 

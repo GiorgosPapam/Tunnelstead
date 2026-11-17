@@ -2,10 +2,10 @@ import re
 
 import pyotp
 from fastapi.testclient import TestClient
-from vpnix_manager import audit
-from vpnix_manager.cli import main as cli
-from vpnix_manager.deps import auth_limiter
-from vpnix_manager.models import AuditEntry, Role, User
+from tunnelstead import audit
+from tunnelstead.cli import main as cli
+from tunnelstead.deps import auth_limiter
+from tunnelstead.models import AuditEntry, Role, User
 
 from tests.conftest import PW, login, make_user
 
@@ -123,7 +123,7 @@ def test_audit_chain_detects_tampering(app, db):
 def test_cli_init_admin_random_password_once(app, db, capsys):
     assert cli(["init-admin", "--username", "Root"]) == 0
     out = capsys.readouterr().out
-    pw = re.search(r"VPNIX_ADMIN_PASSWORD=(\S+)", out).group(1)
+    pw = re.search(r"TUNNELSTEAD_ADMIN_PASSWORD=(\S+)", out).group(1)
     assert len(pw) >= 20
     u = db.query(User).filter_by(username="root").one()
     assert u.role == Role.ADMIN and u.must_change_password

@@ -1,7 +1,7 @@
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
-from vpnix_manager import db as dbmod
-from vpnix_manager.db import Base
+from tunnelstead import db as dbmod
+from tunnelstead.db import Base
 
 
 def test_migrations_match_models(app):

@@ -32,7 +32,7 @@ class Check:
 
 
 def host_facts(helper) -> dict:
-    """Live state of the server, so conflicts with things VPNix did not create are detected too."""
+    """Live state of the server, so conflicts with things Tunnelstead did not create are detected too."""
     ifaces = helper.call("net.interfaces")
     # Every tunnel config on the host (managed or foreign), for conflict detection across protocols.
     tunnels = helper.call("net.wg_interfaces")["interfaces"] + helper.call("net.ovpn_interfaces")["interfaces"]
@@ -97,11 +97,11 @@ def validate(db: DB, helper, data: dict, exclude_id: int | None = None) -> Check
     elif db.scalar(select(VpnInstance).where(VpnInstance.iface == iface, VpnInstance.id != (exclude_id or 0))):
         c.errors["iface"] = "Another VPN instance uses this interface"
     elif not exclude_id and any(w["name"] == iface for w in facts["wg"]):
-        c.errors["iface"] = f"{iface} already exists on this server (not created by VPNix Manager); it will not be touched"
+        c.errors["iface"] = f"{iface} already exists on this server (not created by Tunnelstead); it will not be touched"
     elif not exclude_id and any(i["name"] == iface for i in facts["interfaces"]["interfaces"]):
         c.errors["iface"] = f"A network interface named {iface} already exists"
     others = [i for i in db.scalars(select(VpnInstance)) if i.id != exclude_id]
-    ours = {i.iface for i in db.scalars(select(VpnInstance))}  # VPNix interfaces: covered by the DB check above
+    ours = {i.iface for i in db.scalars(select(VpnInstance))}  # Tunnelstead interfaces: covered by the DB check above
     host_nets = [ipaddress.ip_interface(a).network for i in facts["interfaces"]["interfaces"]
                  if i["name"] not in ours for a in i["addresses"]]
     for key, version in (("ipv4_cidr", 4), ("ipv6_cidr", 6)):

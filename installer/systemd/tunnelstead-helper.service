@@ -1,10 +1,10 @@
 [Unit]
-Description=VPNix Manager privileged helper (fixed operation allowlist)
+Description=Tunnelstead privileged helper (fixed operation allowlist)
 After=network-online.target
-Before=vpnix-manager-api.service
+Before=tunnelstead-api.service
 
 [Service]
-ExecStart=/usr/bin/python3 -I /opt/vpnix-manager/helper/vpnix_manager_helper.py
+ExecStart=/usr/bin/python3 -I /opt/tunnelstead/helper/tunnelstead_helper.py
 Restart=on-failure
 # Root is required for WireGuard, nftables, sysctl and wg-quick units, but the filesystem is read-only except
 # the few paths the allowlisted operations need.

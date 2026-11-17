@@ -6,7 +6,7 @@ uploaded to GitHub and never given to CI. Anyone holding it can publish updates 
 ## One-time setup
 
 ```bash
-python tools/release.py keygen --key ~/.vpnix-manager/release-signing.key
+python tools/release.py keygen --key ~/.tunnelstead/release-signing.key
 ```
 This writes the private key (keep it secret and back it up offline, e.g. in a password manager) and puts the public
 key in `installer/release-key.pub`. Commit the public key. **Changing it later means existing installations reject
@@ -19,12 +19,12 @@ new releases** until they install a release containing the new public key, which
 3. Build the web UI and the signed bundle:
    ```bash
    (cd frontend && npm ci && npm run build)
-   python tools/release.py build --key ~/.vpnix-manager/release-signing.key     # → dist/
+   python tools/release.py build --key ~/.tunnelstead/release-signing.key     # → dist/
    ```
 4. Tag and publish:
    ```bash
-   git tag -s vX.Y.Z -m "VPNix Manager X.Y.Z" && git push origin main vX.Y.Z
-   gh release create vX.Y.Z dist/vpnix-manager-X.Y.Z.tar.gz dist/vpnix-manager-X.Y.Z.tar.gz.sig --notes-file NOTES.md
+   git tag -s vX.Y.Z -m "Tunnelstead X.Y.Z" && git push origin main vX.Y.Z
+   gh release create vX.Y.Z dist/tunnelstead-X.Y.Z.tar.gz dist/tunnelstead-X.Y.Z.tar.gz.sig --notes-file NOTES.md
    ```
    The release notes are shown on every installation's Updates page.
 5. The **Verify release** workflow checks the signature and version of the uploaded assets and attaches `SHA256SUMS`.

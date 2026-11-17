@@ -16,10 +16,10 @@ import Monitoring from "./pages/Monitoring";
 import Updates from "./pages/Updates";
 
 function useTheme() {
-  const [theme, setTheme] = useState(() => { try { return localStorage.getItem("vpnix_theme") ?? "dark"; } catch { return "dark"; } });
+  const [theme, setTheme] = useState(() => { try { return localStorage.getItem("tunnelstead_theme") ?? "dark"; } catch { return "dark"; } });
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
-    try { localStorage.setItem("vpnix_theme", theme); } catch { /* storage unavailable: theme still applies */ }
+    try { localStorage.setItem("tunnelstead_theme", theme); } catch { /* storage unavailable: theme still applies */ }
   }, [theme]);
   return [theme, () => setTheme((t) => (t === "dark" ? "light" : "dark"))] as const;
 }
@@ -34,8 +34,8 @@ export default function App() {
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
     const out = () => setMe(null);
-    window.addEventListener("vpnix:signed-out", out);
-    return () => window.removeEventListener("vpnix:signed-out", out);
+    window.addEventListener("tunnelstead:signed-out", out);
+    return () => window.removeEventListener("tunnelstead:signed-out", out);
   }, []);
   const signOut = async () => { await api("/api/auth/logout", { method: "POST" }).catch(() => {}); setCsrf(null); setMe(null); };
 

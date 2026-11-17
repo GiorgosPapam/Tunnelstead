@@ -2,8 +2,8 @@
 from datetime import UTC, datetime
 
 import pytest
-from vpnix_manager import backup, collector, notify
-from vpnix_manager.models import HostMetric, InstanceMetric, Role, Setting, VpnInstance
+from tunnelstead import backup, collector, notify
+from tunnelstead.models import HostMetric, InstanceMetric, Role, Setting, VpnInstance
 
 from tests.conftest import PW, WG1, login, make_user
 
@@ -37,7 +37,7 @@ def test_backup_roundtrip_restores_deleted_server(app, db, helper):
     helper.calls.clear()
     r = c.post(f"/api/backups/{b['name']}/restore", json={"passphrase": PASS, "confirm": b["name"]})
     assert r.status_code == 200, r.text
-    assert r.json()["safety_backup"].endswith("pre-restore.vbk") and r.json()["warnings"] == []
+    assert r.json()["safety_backup"].endswith("pre-restore.tsbk") and r.json()["warnings"] == []
     assert any(m == "wg.sync" and p["iface"] == "wg1" for m, p in helper.calls)  # server redeployed
     assert c.get("/api/auth/me").status_code == 401  # old sessions are not restored
     c2 = login(app, "boss")
@@ -64,7 +64,7 @@ def test_upload_download_and_names(app, db, helper):
     assert up.status_code == 201 and up.json()["kind"] == "uploaded"
     assert c.post(f"/api/backups/{up.json()['name']}/preview", json={"passphrase": PASS}).status_code == 200
     assert c.post("/api/backups/upload", content=b"not a backup").status_code == 422
-    for bad in ("../vpnix.db", "vpnix-backup-x.vbk", "..%2Fvpnix.db"):
+    for bad in ("../tunnelstead.db", "tunnelstead-backup-x.tsbk", "..%2Ftunnelstead.db"):
         assert c.get(f"/api/backups/{bad}/download").status_code in (404, 422)
     assert c.delete(f"/api/backups/{up.json()['name']}").status_code == 204
     assert len(c.get("/api/backups").json()["backups"]) == 1
@@ -144,7 +144,7 @@ def test_service_logs(app, db, helper):
     c.post("/api/instances", json=WG1)
     r = c.get("/api/logs/services", params={"priority": "error", "q": "fail"}).json()
     assert "wg-quick@wg1" in r["units"] and [e["message"] for e in r["entries"]] == ["Failed to start"]
-    assert helper.journal_args["priority"] == "error" and "vpnix-manager-api" in helper.journal_args["units"]
+    assert helper.journal_args["priority"] == "error" and "tunnelstead-api" in helper.journal_args["units"]
     assert c.get("/api/logs/services", params={"unit": "sshd"}).status_code == 422
     make_user(db, "viewer", role=Role.VIEWER)
     assert login(app, "viewer").get("/api/logs/services").status_code == 403
@@ -188,7 +188,7 @@ def test_lockout_sends_one_alert(app, db, helper, monkeypatch):
     assert len(sent) == 1 and "alice" in sent[0]
 
 
-@pytest.mark.parametrize("bad", [["sshd"], ["wg-quick@eth0"], "vpnix-manager-api", [], ["caddy; rm -rf /"]])
+@pytest.mark.parametrize("bad", [["sshd"], ["wg-quick@eth0"], "tunnelstead-api", [], ["caddy; rm -rf /"]])
 def test_helper_journal_rejects_bad_units(bad):
     from tests.test_helper import helper as H
     with pytest.raises(H.Invalid):
@@ -223,7 +223,7 @@ def test_webhook_errors_are_reported_not_raised(monkeypatch):
 
 
 def test_restores_backups_made_under_the_old_name(app, db, helper):
-    """Backups made by 1.x (VPNix Create) must still restore after the rename."""
+    """Backups made as VPNix (header VPNIXBK1, vpnix.db inside, .vbk name) must still restore after the rename."""
     import io
     import json
     import os
@@ -242,5 +242,12 @@ def test_restores_backups_made_under_the_old_name(app, db, helper):
             info.size = len(data)
             tar.addfile(info, io.BytesIO(data))
     salt, nonce = os.urandom(16), os.urandom(12)
-    p.write_bytes(backup.MAGIC + salt + nonce + AESGCM(backup._key(PASS, salt)).encrypt(nonce, buf.getvalue(), backup.MAGIC))
-    assert c.post(f"/api/backups/{b['name']}/preview", json={"passphrase": PASS}).status_code == 200
+    old = b"VPNIXBK1"
+    legacy = backup.backup_dir() / b["name"].replace("tunnelstead-", "vpnix-").replace(".tsbk", ".vbk")
+    legacy.write_bytes(old + salt + nonce + AESGCM(backup._key(PASS, salt)).encrypt(nonce, buf.getvalue(), old))
+    p.unlink()
+    assert legacy.name in [x["name"] for x in c.get("/api/backups").json()["backups"]]
+    r = c.post(f"/api/backups/{legacy.name}/preview", json={"passphrase": PASS})
+    assert r.status_code == 200 and r.json()["integrity_ok"], r.text
+    up = c.post("/api/backups/upload", content=legacy.read_bytes(), headers={"Content-Type": "application/octet-stream"})
+    assert up.status_code == 201

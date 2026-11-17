@@ -31,7 +31,7 @@ export default function Firewall({ me }: { me: Me }) {
   if (!s) return err ? <Alert>{err}</Alert> : <Spinner />;
   return <>
     <h1 className="text-2xl font-semibold tracking-tight m-0">Firewall</h1>
-    <p className="muted m-0 mt-1 mb-5">VPNix Manager only manages its own nftables table. Your other firewall rules are never changed.</p>
+    <p className="muted m-0 mt-1 mb-5">Tunnelstead only manages its own nftables table. Your other firewall rules are never changed.</p>
     {token && left > 0 && <div role="alert" className="glass rounded-2xl p-4 mb-4 flex flex-wrap items-center gap-3" style={{ borderColor: "var(--warn)" }}>
       <ShieldAlert size={20} style={{ color: "var(--warn)" }} aria-hidden="true" />
       <div className="flex-1 min-w-[16rem]"><strong>Keep this firewall change?</strong>
@@ -63,7 +63,7 @@ export default function Firewall({ me }: { me: Me }) {
       </Card>
     </div>
     <details className="card p-5 mt-4"><summary className="cursor-pointer font-semibold">Server firewall ruleset (read-only)</summary>
-      <p className="muted text-sm">Everything currently loaded in nftables. VPNix Manager's table is <code>inet vpnix_manager</code>; everything else belongs to the system or other software and is never modified.</p>
+      <p className="muted text-sm">Everything currently loaded in nftables. Tunnelstead's table is <code>inet tunnelstead</code>; everything else belongs to the system or other software and is never modified.</p>
       <pre className="text-xs overflow-auto max-h-96 p-3 rounded-xl" style={{ background: "var(--surface-2)" }}>{s.host_ruleset || "(empty)"}</pre></details>
     {adding && <RuleForm onClose={() => setAdding(false)} onDone={(r) => { setAdding(false); applied(r); }} />}
     {mgmt && <MgmtForm s={s} onClose={() => setMgmt(false)} onDone={(r) => { setMgmt(false); applied(r); }} />}

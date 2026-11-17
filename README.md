@@ -1,6 +1,6 @@
-<p align="center"><img src="branding/vpnix-manager-logo.svg" alt="VPNix Manager" width="360"></p>
+<p align="center"><img src="branding/tunnelstead-logo.svg" alt="Tunnelstead" width="360"></p>
 
-**VPNix Manager** is a self-hosted dashboard for running your own VPN servers. It sets up and manages
+**Tunnelstead** is a self-hosted dashboard for running your own VPN servers. It sets up and manages
 **WireGuard** and **OpenVPN** on a Linux server, with as many servers and clients as you need, from a modern web
 interface. No cloud account and no third-party service are involved: everything runs on your server.
 
@@ -11,7 +11,7 @@ interface. No cloud account and no third-party service are involved: everything 
 - **Clients:** QR codes and config downloads, expiry dates, data limits, enable/disable, key regeneration. You can see
   who is online, when they last connected and how much they used.
 - **Firewall:** your own allow/block rules and dashboard access restriction. Every change is undone after 60 seconds
-  unless you keep it, so a mistake can't lock you out. Only VPNix Manager's own nftables table is ever touched.
+  unless you keep it, so a mistake can't lock you out. Only Tunnelstead's own nftables table is ever touched.
 - **Monitoring and logs:** CPU, memory, disk, traffic and clients online over 30 days; per-server throughput and
   availability; service logs; a tamper-evident audit log.
 - **Alerts:** webhook (Slack, Discord, Teams, ntfy…) and e-mail when a server goes down, a certificate expires, a
@@ -28,7 +28,7 @@ interface. No cloud account and no third-party service are involved: everything 
 On a fresh **Ubuntu 22.04/24.04** or **Debian 12/13** server, as root:
 
 ```bash
-tar -xzf vpnix-manager-X.Y.Z.tar.gz && cd vpnix-manager-X.Y.Z
+tar -xzf tunnelstead-X.Y.Z.tar.gz && cd tunnelstead-X.Y.Z
 sudo bash installer/install.sh                      # IP address only: HTTPS with a local certificate
 sudo bash installer/install.sh --domain vpn.example.org   # with a domain: Let's Encrypt certificate
 ```

@@ -1,4 +1,4 @@
-"""VPNix Manager. The version comes from the VERSION file shipped with every release bundle."""
+"""Tunnelstead. The version comes from the VERSION file shipped with every release bundle."""
 from pathlib import Path
 
 

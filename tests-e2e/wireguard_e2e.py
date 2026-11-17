@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Real-host end-to-end test for the WireGuard engine. Run as root on an installed server:
 
-    sudo vpnix-manager-e2e   (or: python3 tests-e2e/wireguard_e2e.py with the service env loaded)
+    sudo tunnelstead-e2e   (or: python3 tests-e2e/wireguard_e2e.py with the service env loaded)
 
 Uses a temporary admin and throwaway instances/clients, a WireGuard client in a network namespace, and removes
 everything afterwards. Nothing pre-existing on the host is modified.
@@ -43,7 +43,7 @@ class Api:
         r = urllib.request.Request(API + path, data=data, method=method)
         r.add_header("Content-Type", "application/json")
         if self.cookie:
-            r.add_header("Cookie", f"vpnix_session={self.cookie}")
+            r.add_header("Cookie", f"tunnelstead_session={self.cookie}")
         if self.csrf and method != "GET":
             r.add_header("X-CSRF-Token", self.csrf)
         try:
@@ -52,7 +52,7 @@ class Api:
         except urllib.error.HTTPError as e:
             status, raw, headers = e.code, e.read(), e.headers
         for c in headers.get_all("Set-Cookie") or []:
-            if c.startswith("vpnix_session="):
+            if c.startswith("tunnelstead_session="):
                 self.cookie = c.split(";")[0].split("=", 1)[1]
         try:
             return status, json.loads(raw) if raw else None
@@ -67,10 +67,10 @@ class Api:
 
 
 def temp_admin(create, name, pw=""):
-    sys.path.insert(0, "/opt/vpnix-manager/backend")
-    from vpnix_manager.db import get_db
-    from vpnix_manager.models import Role, User
-    from vpnix_manager.security import hash_password
+    sys.path.insert(0, "/opt/tunnelstead/backend")
+    from tunnelstead.db import get_db
+    from tunnelstead.models import Role, User
+    from tunnelstead.security import hash_password
     db = next(get_db())
     if create:
         db.add(User(username=name, role=Role.ADMIN, password_hash=hash_password(pw)))
@@ -82,9 +82,9 @@ def temp_admin(create, name, pw=""):
 
 
 def collect():
-    from vpnix_manager import collector
-    from vpnix_manager.db import get_db
-    from vpnix_manager.helper_client import Helper
+    from tunnelstead import collector
+    from tunnelstead.db import get_db
+    from tunnelstead.helper_client import Helper
     db = next(get_db())
     try:
         return collector.collect(db, Helper())
@@ -127,7 +127,7 @@ def ping(target, count=3, v6=False):
 
 
 def main():
-    public_ip = os.environ.get("VPNIX_E2E_PUBLIC_IP") or sh("hostname", "-I").stdout.split()[0]
+    public_ip = os.environ.get("TUNNELSTEAD_E2E_PUBLIC_IP") or sh("hostname", "-I").stdout.split()[0]
     tag = secrets.token_hex(3)
     admin, pw = f"e2e-{tag}", secrets.token_urlsafe(18)
     temp_admin(True, admin, pw)
@@ -135,7 +135,7 @@ def main():
     created, foreign = [], "/etc/wireguard/wg97.conf"
     blocker = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
-        # A foreign WireGuard config (not made by VPNix Manager) must be detected and never touched.
+        # A foreign WireGuard config (not made by Tunnelstead) must be detected and never touched.
         os.makedirs("/etc/wireguard", exist_ok=True)
         with open(foreign, "w") as f:
             f.write("[Interface]\nPrivateKey = foreign\n")
@@ -145,7 +145,7 @@ def main():
                 "egress_iface": rec["egress_iface"], "ipv4_cidr": rec["ipv4_cidr"], "ipv6_cidr": rec["ipv6_cidr"],
                 "dns": ["1.1.1.1"], "routing_mode": "full", "nat": True}
         s, b = api.req("POST", "/api/instances/validate", {**base, "iface": "wg97"})
-        check("validation refuses the foreign interface", "not created by VPNix Manager" in b["errors"].get("iface", ""))
+        check("validation refuses the foreign interface", "not created by Tunnelstead" in b["errors"].get("iface", ""))
         blocker.bind(("0.0.0.0", 51999))  # a real port held by another program
         s, b = api.req("GET", "/api/instances/port-check?port=51999&transport=udp")
         check("port check detects a real port in use", b["free"] is False, b["message"])
@@ -197,7 +197,7 @@ def main():
             api.req("POST", f"/api/clients/{cl['id']}/revoke")
             check("revoked client removed", cl["public_key"] not in sh("wg", "show", a["iface"], "peers").stdout)
             check("revoked client cannot reach server", not ping(gw4, 2))
-            rules = sh("nft", "list", "table", "inet", "vpnix_manager").stdout
+            rules = sh("nft", "list", "table", "inet", "tunnelstead").stdout
             check("firewall: own table with both ports and NAT", f"udp dport {a['listen_port']}" in rules and
                   f"udp dport {bb['listen_port']}" in rules and "masquerade" in rules)
         finally:

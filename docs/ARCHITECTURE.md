@@ -1,28 +1,28 @@
-# VPNix Manager: Architecture
+# Tunnelstead: Architecture
 
 ## 1. Components and privilege boundaries
 
 ```
-Browser ──HTTPS──► Caddy (TLS, static UI, security headers) ──► vpnix-manager-api (FastAPI, user vpnix-manager, no capabilities)
+Browser ──HTTPS──► Caddy (TLS, static UI, security headers) ──► tunnelstead-api (FastAPI, user tunnelstead, no capabilities)
                                                                    │  SQLite via SQLAlchemy 2 + Alembic migrations
-                                                                   │  JSON over Unix socket /run/vpnix-manager/helper.sock (0660 root:vpnix-manager)
+                                                                   │  JSON over Unix socket /run/tunnelstead/helper.sock (0660 root:tunnelstead)
                                                                    ▼
-                                                       vpnix-manager-helper (root, systemd-sandboxed, fixed allowlist)
+                                                       tunnelstead-helper (root, systemd-sandboxed, fixed allowlist)
                                                                    │  argv-only exec: wg, wg-quick, ip, ss, nft, sysctl, systemctl, openvpn, journalctl
                                                                    ▼
                                                      WireGuard · OpenVPN · nftables (own table) · sysctl · journald
-vpnix-manager-updater@<action> (root, oneshot): started by the helper's sys.update or by update.sh
+tunnelstead-updater@<action> (root, oneshot): started by the helper's sys.update or by update.sh
 ```
 
 | Component | Runs as | Can | Cannot |
 |---|---|---|---|
 | Web UI (React) | browser | call the API with the HttpOnly session cookie + in-memory CSRF token | read the session token; store secrets in localStorage |
-| `vpnix-manager-api` | `vpnix-manager` | DB, psutil metrics, backups in its state dir, update downloads, call helper methods | run commands, write `/etc` or `/opt`, change the firewall directly |
-| `vpnix-manager-helper` | root | the allowlisted methods below, validating every argument first | anything else; arbitrary paths, units or tables; a shell |
+| `tunnelstead-api` | `tunnelstead` | DB, psutil metrics, backups in its state dir, update downloads, call helper methods | run commands, write `/etc` or `/opt`, change the firewall directly |
+| `tunnelstead-helper` | root | the allowlisted methods below, validating every argument first | anything else; arbitrary paths, units or tables; a shell |
 | updater | root, oneshot | verify a signed bundle, snapshot, install, health-check, roll back | install unsigned, mis-versioned or older bundles |
 
 **Helper methods:** `net.*` (interfaces, port in use), `wg.*` (sync, service, delete, dump), `ovpn.*` (apply,
-service, status, delete), `fw.*` (apply/confirm/pending/show the `inet vpnix_manager` table, read-only ruleset),
+service, status, delete), `fw.*` (apply/confirm/pending/show the `inet tunnelstead` table, read-only ruleset),
 `sys.*` (forwarding, status, journal for allowlisted units, start the updater). Interfaces must match `wgN`/`ovpnN`
 and their config files must carry the managed marker; foreign configurations are reported, never changed.
 
@@ -76,7 +76,7 @@ than 30 days and checks certificate expiry.
 ## 7. Repository layout
 
 ```
-backend/    FastAPI app (vpnix_manager/), Alembic migrations, tests
+backend/    FastAPI app (tunnelstead/), Alembic migrations, tests
 helper/     privileged helper (stdlib only)
 updater/    root updater (snapshot, install, health check, rollback)
 frontend/   React UI, Playwright tests

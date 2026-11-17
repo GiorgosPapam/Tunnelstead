@@ -11,7 +11,7 @@ export default function Logs({ me }: { me: Me }) {
   return <>
     <div className="flex flex-wrap items-end justify-between gap-3 mb-5">
       <div><h1 className="text-2xl font-semibold tracking-tight m-0">Logs</h1>
-        <p className="muted m-0 mt-1">{tab === "audit" ? "Tamper-evident audit trail of sign-ins and administrative actions" : "System logs of VPNix Manager, Caddy and every VPN server (journald, rotated by the system)"}</p></div>
+        <p className="muted m-0 mt-1">{tab === "audit" ? "Tamper-evident audit trail of sign-ins and administrative actions" : "System logs of Tunnelstead, Caddy and every VPN server (journald, rotated by the system)"}</p></div>
       <div role="tablist" aria-label="Log type" className="inline-flex gap-1 p-1 rounded-2xl" style={{ background: "var(--surface-2)" }}>
         {[["audit", "Audit log"], ["services", "Service logs"]].map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
           className={`rounded-xl px-4 py-1.5 text-sm font-medium border-0 cursor-pointer ${tab === k ? "bg-[var(--bg-2)] text-[var(--text)] shadow" : "bg-transparent text-[var(--muted)]"}`}>{l}</button>)}
@@ -69,7 +69,7 @@ function AuditLog({ me }: { me: Me }) {
     const rows = [["time", "category", "action", "actor", "target", "ip", "result"], ...(d?.entries ?? []).map((e) =>
       [e.ts, e.category, e.action, e.actor ?? "", e.target ?? "", e.ip ?? "", e.success ? "ok" : "failed"])];
     const csv = rows.map((r) => r.map((v) => `"${String(v).replaceAll('"', '""')}"`).join(",")).join("\n");
-    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" })); a.download = "vpnix-audit.csv"; a.click();
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" })); a.download = "tunnelstead-audit.csv"; a.click();
   };
   return <>
     <div className="flex justify-end mb-3"><button className="btn" onClick={exportCsv} disabled={!d?.entries.length}><Download size={16} aria-hidden="true" />Export CSV</button></div>

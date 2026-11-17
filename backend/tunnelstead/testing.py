@@ -1,6 +1,6 @@
 """Browser-test support ONLY: a simulated host instead of the privileged helper.
 
-Enabled with VPNIX_UI_TEST_HELPER=1 and refused unless the database is SQLite, so a production install can never
+Enabled with TUNNELSTEAD_UI_TEST_HELPER=1 and refused unless the database is SQLite, so a production install can never
 run against a fake system. Real system behaviour is verified on Linux by tests-e2e/.
 """
 import os
@@ -28,7 +28,7 @@ class SimulatedHost:
             return {"ok": True}
         if method == "fw.pending":
             return {"pending": SimulatedHost.fw_token is not None, "seconds_left": 60}
-        own = "table inet vpnix_manager {\n\tchain input {\n\t\tudp dport 51820 accept\n\t}\n}\n"
+        own = "table inet tunnelstead {\n\tchain input {\n\t\tudp dport 51820 accept\n\t}\n}\n"
         if method == "fw.show":
             return {"ruleset": own}
         if method == "fw.ruleset":
@@ -66,8 +66,8 @@ class SimulatedHost:
         if method == "wg.dump":
             return {"running": True, "peers": []}
         if method == "sys.journal":
-            return {"entries": [{"ts": 1763300000, "unit": "vpnix-manager-api.service", "priority": 6, "message": "Application startup complete."},
-                                {"ts": 1763300060, "unit": "vpnix-manager-helper.service", "priority": 4, "message": "simulated warning"}]}
+            return {"entries": [{"ts": 1763300000, "unit": "tunnelstead-api.service", "priority": 6, "message": "Application startup complete."},
+                                {"ts": 1763300060, "unit": "tunnelstead-helper.service", "priority": 4, "message": "simulated warning"}]}
         if method == "sys.update":
             import json
             from pathlib import Path
@@ -83,8 +83,8 @@ class SimulatedHost:
 
 
 def enabled() -> bool:
-    if os.environ.get("VPNIX_UI_TEST_HELPER") != "1":
+    if os.environ.get("TUNNELSTEAD_UI_TEST_HELPER") != "1":
         return False
     if not get_settings().database_url.startswith("sqlite"):
-        raise RuntimeError("VPNIX_UI_TEST_HELPER is only allowed with a SQLite test database")
+        raise RuntimeError("TUNNELSTEAD_UI_TEST_HELPER is only allowed with a SQLite test database")
     return True

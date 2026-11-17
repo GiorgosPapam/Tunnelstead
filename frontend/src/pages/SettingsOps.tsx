@@ -22,7 +22,7 @@ export function Backups() {
   return <div className="grid gap-4 lg:grid-cols-3">
     <Card title="Backups" className="lg:col-span-2" actions={<div className="flex gap-2">
       <button className="btn" onClick={() => file.current?.click()}><Upload size={16} aria-hidden="true" />Upload</button>
-      <input ref={file} type="file" accept=".vbk" className="hidden" aria-label="Upload backup file" onChange={(e) => upload(e.target.files?.[0])} />
+      <input ref={file} type="file" accept=".tsbk,.vbk" className="hidden" aria-label="Upload backup file" onChange={(e) => upload(e.target.files?.[0])} />
       <button className="btn btn-primary" onClick={() => setCreating(true)}>Back up now</button></div>}>
       <p className="muted text-sm mt-0">Everything is included: VPN servers, keys, certificates, clients, users, firewall and settings. Backups are encrypted with your passphrase; keep a copy somewhere other than this server.</p>
       <Alert>{err}</Alert><Alert kind="ok">{msg}</Alert>
@@ -100,10 +100,10 @@ function RestoreBackup({ b, onClose }: { b: B; onClose: () => void }) {
     </form> : <>
       <Alert kind="ok">Decrypted and verified: the file is complete and unmodified.</Alert>
       <div className="card p-3 text-sm mb-3"><div className="muted text-xs font-semibold mb-1">THIS BACKUP CONTAINS</div>
-        <div>Made {fmtDate(pv.created_at)} by VPNix Manager {pv.app_version}</div>
+        <div>Made {fmtDate(pv.created_at)} by Tunnelstead {pv.app_version}</div>
         {Object.entries(labels).map(([k, l]) => <div key={k}>{l}: <strong>{pv.contents[k]}</strong></div>)}</div>
-      {!pv.compatible ? <Alert>This backup is from a newer version of VPNix Manager. Update this server first.</Alert>
-        : !pv.same_secret_key ? <Alert kind="info">This backup comes from another server. Restore it on the command line: <code>sudo /opt/vpnix-manager/installer/restore.sh FILE</code></Alert>
+      {!pv.compatible ? <Alert>This backup is from a newer version of Tunnelstead. Update this server first.</Alert>
+        : !pv.same_secret_key ? <Alert kind="info">This backup comes from another server. Restore it on the command line: <code>sudo /opt/tunnelstead/installer/restore.sh FILE</code></Alert>
         : <>
           <Alert kind="info">All current data is replaced by the backup. A safety copy of the current data is made first. VPN servers and the firewall are redeployed to match, and everyone must sign in again.</Alert>
           <Field id="rb-c" label={`Type the backup name to confirm`} hint={b.name}><input id="rb-c" className="field" value={confirmName} onChange={(e) => setConfirm(e.target.value)} /></Field>

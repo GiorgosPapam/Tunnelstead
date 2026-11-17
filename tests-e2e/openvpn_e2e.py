@@ -110,7 +110,7 @@ def run(api, public_ip, transport, rec, tag, created):
 
 
 def main():
-    public_ip = os.environ.get("VPNIX_E2E_PUBLIC_IP") or w.sh("hostname", "-I").stdout.split()[0]
+    public_ip = os.environ.get("TUNNELSTEAD_E2E_PUBLIC_IP") or w.sh("hostname", "-I").stdout.split()[0]
     tag = secrets.token_hex(3)
     admin, pw = f"e2e-{tag}", secrets.token_urlsafe(18)
     w.temp_admin(True, admin, pw)

@@ -1,5 +1,5 @@
 from cryptography import x509
-from vpnix_manager import collector, pki
+from tunnelstead import collector, pki
 
 from tests.conftest import login, make_user
 
@@ -78,7 +78,7 @@ def test_wireguard_cannot_use_tcp_and_foreign_openvpn_detected(app, db, helper):
     assert "UDP only" in r["errors"]["transport"]
     helper.foreign_wg.append("ovpn0")  # someone's own OpenVPN server config
     r = c.post("/api/instances/validate", json=OV).json()
-    assert "not created by VPNix Manager" in r["errors"]["iface"]
+    assert "not created by Tunnelstead" in r["errors"]["iface"]
 
 
 def test_session_counters_become_totals(app, db, helper):

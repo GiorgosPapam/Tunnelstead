@@ -6,7 +6,7 @@ import re
 
 import pytest
 
-HELPER = pathlib.Path(__file__).parents[2] / "helper" / "vpnix_manager_helper.py"
+HELPER = pathlib.Path(__file__).parents[2] / "helper" / "tunnelstead_helper.py"
 spec = importlib.util.spec_from_file_location("helper", HELPER)
 helper = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(helper)
@@ -50,7 +50,7 @@ def test_refuses_unmanaged_wireguard_interface(tmp_path, monkeypatch):
     for method, params in (("wg.delete", {"iface": "wg0"}), ("wg.service", {"iface": "wg0", "action": "stop"}),
                            ("wg.sync", {"iface": "wg0", "listen_port": 51820, "private_key": KEY,
                                         "addresses": ["10.0.0.1/24"], "mtu": 1420, "peers": []})):
-        assert "not managed by VPNix Manager" in call(method, **params)["error"]
+        assert "not managed by Tunnelstead" in call(method, **params)["error"]
     assert (tmp_path / "wg0.conf").read_text().startswith("[Interface]")  # untouched
 
 
@@ -68,7 +68,7 @@ def test_firewall_only_replaces_own_table(monkeypatch):
     assert nft[0][0][:3] == ["/usr/sbin/nft", "-c", "-f"]  # dry run first
     rules = next(inp for argv, inp in nft if argv[:2] == ["/usr/sbin/nft", "-f"])
     tables = set(re.findall(r"table inet (\S+)", rules))
-    assert tables == {"vpnix_manager"}  # nothing outside the application's own table
+    assert tables == {"tunnelstead"}  # nothing outside the application's own table
     assert "udp dport 51820 accept" in rules and 'ip saddr 10.8.0.0/24 oifname "eth0" masquerade' in rules
     assert 'ip6 saddr fd00:8::/64 oifname "eth0" masquerade' in rules
     assert 'iifname "wg0" oifname "wg0" accept' not in rules  # clients isolated from each other
@@ -88,10 +88,10 @@ def test_sync_writes_marked_config(tmp_path, monkeypatch):
 
 
 def test_ui_test_helper_refuses_production_database(monkeypatch):
-    from vpnix_manager import testing
-    from vpnix_manager.config import get_settings
-    monkeypatch.setenv("VPNIX_UI_TEST_HELPER", "1")
-    monkeypatch.setattr(get_settings(), "database_url", "postgresql+psycopg://x@db/vpnix")
+    from tunnelstead import testing
+    from tunnelstead.config import get_settings
+    monkeypatch.setenv("TUNNELSTEAD_UI_TEST_HELPER", "1")
+    monkeypatch.setattr(get_settings(), "database_url", "postgresql+psycopg://x@db/tunnelstead")
     with pytest.raises(RuntimeError):
         testing.enabled()
 
@@ -145,7 +145,7 @@ def nft_log(monkeypatch):
         seen.append((argv, input))
         r = _R()
         if argv[1:3] == ["list", "table"]:
-            r.stdout = "table inet vpnix_manager { # previous\n}\n"
+            r.stdout = "table inet tunnelstead { # previous\n}\n"
         return r
     monkeypatch.setattr(helper.subprocess, "run", fake)
     return seen

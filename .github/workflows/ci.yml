@@ -40,7 +40,7 @@ jobs:
         run: npm run build
       - name: Browser tests (Playwright)
         working-directory: frontend
-        env: { VPNIX_PYTHON: python }
+        env: { TUNNELSTEAD_PYTHON: python }
         run: |
           npx playwright install --with-deps chromium
           npx playwright test

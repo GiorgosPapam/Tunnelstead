@@ -1,6 +1,7 @@
-"""Encrypted, self-verifying backups of the whole VPNix Manager state.
+"""Encrypted, self-verifying backups of the whole Tunnelstead state.
 
-File format (.vbk):  b"VPNIXBK1" | salt (16) | nonce (12) | AES-256-GCM( tar.gz{manifest.json, vpnix.db} )
+File format (.tsbk): b"TSTEADB1" | salt (16) | nonce (12) | AES-256-GCM( tar.gz{manifest.json, tunnelstead.db} )
+Backups made under the earlier names (VPNix Create / VPNix Manager: b"VPNIXBK1", .vbk, vpnix.db) still restore.
 The key comes from the backup passphrase via Argon2id, so a backup can be restored on a new server, and nothing in
 it (VPN keys, certificates, password hashes, the app secret key) is readable without the passphrase. GCM
 authenticates the whole file; the manifest also carries a SHA-256 of the database for a second integrity check.
@@ -23,10 +24,13 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from . import __version__
 from .config import get_settings
 
-MAGIC = b"VPNIXBK1"
+MAGIC = b"TSTEADB1"
+MAGICS = (MAGIC, b"VPNIXBK1")  # the second: backups made before the rename to Tunnelstead
+DB_MEMBERS = ("tunnelstead.db", "vpnix.db")
+APPS = ("tunnelstead", "vpnix-manager", "vpnix-create")
 FORMAT = 1
 MAX_SIZE = 512 * 1024 * 1024
-NAME_RE = re.compile(r"^vpnix-backup-\d{8}-\d{6}-(manual|scheduled|pre-restore|uploaded)(-\d+)?\.vbk$")
+NAME_RE = re.compile(r"^(?:tunnelstead|vpnix)-backup-\d{8}-\d{6}-(?P<kind>manual|scheduled|pre-restore|uploaded)(-\d+)?\.(?:tsbk|vbk)$")
 
 
 class BackupError(ValueError):
@@ -37,7 +41,7 @@ def backup_dir() -> Path:
     url = get_settings().database_url
     if not url.startswith("sqlite:///"):
         raise BackupError("Backups need the default SQLite database")
-    d = Path(os.environ.get("VPNIX_BACKUP_DIR") or Path(db_path()).parent / "backups")
+    d = Path(os.environ.get("TUNNELSTEAD_BACKUP_DIR") or Path(db_path()).parent / "backups")
     d.mkdir(mode=0o750, parents=True, exist_ok=True)
     return d
 
@@ -84,7 +88,7 @@ def unique_name(kind: str) -> str:
     stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     d, n = backup_dir(), 0
     while True:
-        name = f"vpnix-backup-{stamp}-{kind}{f'-{n}' if n else ''}.vbk"
+        name = f"tunnelstead-backup-{stamp}-{kind}{f'-{n}' if n else ''}.tsbk"
         if not (d / name).exists():
             return name
         n += 1
@@ -93,12 +97,12 @@ def unique_name(kind: str) -> str:
 def create(passphrase: str, kind: str = "manual") -> dict:
     raw = _snapshot()
     counts = _counts(raw)
-    manifest = {"format": FORMAT, "app": "vpnix-manager", "app_version": __version__, "kind": kind,
+    manifest = {"format": FORMAT, "app": "tunnelstead", "app_version": __version__, "kind": kind,
                 "created_at": datetime.now(UTC).isoformat(), "db_sha256": hashlib.sha256(raw).hexdigest(),
                 "contents": counts, "secret_key": get_settings().secret_key}
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w:gz") as tar:
-        for name, data in (("manifest.json", json.dumps(manifest).encode()), ("vpnix.db", raw)):
+        for name, data in (("manifest.json", json.dumps(manifest).encode()), ("tunnelstead.db", raw)):
             info = tarfile.TarInfo(name)
             info.size, info.mode = len(data), 0o600
             tar.addfile(info, io.BytesIO(data))
@@ -113,20 +117,22 @@ def create(passphrase: str, kind: str = "manual") -> dict:
 
 def open_backup(path: Path, passphrase: str) -> tuple[dict, bytes]:
     blob = path.read_bytes()
-    if not blob.startswith(MAGIC) or len(blob) < 8 + 16 + 12 + 16:
-        raise BackupError("This is not a VPNix Manager backup file")
+    magic = blob[:8]
+    if magic not in MAGICS or len(blob) < 8 + 16 + 12 + 16:
+        raise BackupError("This is not a Tunnelstead backup file")
     salt, nonce, ct = blob[8:24], blob[24:36], blob[36:]
     try:
-        tgz = AESGCM(_key(passphrase, salt)).decrypt(nonce, ct, MAGIC)
+        tgz = AESGCM(_key(passphrase, salt)).decrypt(nonce, ct, magic)  # the header is authenticated data
     except InvalidTag:
         raise BackupError("Wrong passphrase, or the file is damaged") from None
     with tarfile.open(fileobj=io.BytesIO(tgz), mode="r:gz") as tar:
         names = tar.getnames()
-        if sorted(names) != ["manifest.json", "vpnix.db"]:
+        member = next((m for m in DB_MEMBERS if m in names), None)
+        if member is None or sorted(names) != sorted(["manifest.json", member]):
             raise BackupError("Unexpected backup contents")
         manifest = json.loads(tar.extractfile("manifest.json").read())
-        raw = tar.extractfile("vpnix.db").read()
-    if manifest.get("format") != FORMAT or manifest.get("app") not in ("vpnix-manager", "vpnix-create"):  # 1.x was called VPNix Create
+        raw = tar.extractfile(member).read()
+    if manifest.get("format") != FORMAT or manifest.get("app") not in APPS:
         raise BackupError("Unsupported backup format")
     if hashlib.sha256(raw).hexdigest() != manifest["db_sha256"]:
         raise BackupError("Integrity check failed: the database inside the backup is damaged")
@@ -147,7 +153,8 @@ def preview(path: Path, passphrase: str) -> dict:
 
 def describe(path: Path) -> dict:
     st = path.stat()
-    kind = NAME_RE.match(path.name)[1] if NAME_RE.match(path.name) else "unknown"
+    m = NAME_RE.match(path.name)
+    kind = m["kind"] if m else "unknown"
     return {"name": path.name, "size": st.st_size, "created_at": datetime.fromtimestamp(st.st_mtime, UTC), "kind": kind}
 
 

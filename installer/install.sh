@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# VPNix Manager installer: Ubuntu 22.04/24.04 LTS, Debian 12/13. Idempotent: safe to re-run.
+# Tunnelstead installer: Ubuntu 22.04/24.04 LTS, Debian 12/13. Idempotent: safe to re-run.
 # Usage: sudo bash installer/install.sh [--domain vpn.example.org] [--admin-user admin]
 set -Eeuo pipefail
 umask 027
 
-PREFIX=/opt/vpnix-manager      # application code (root-owned, read-only to the service)
-ETC=/etc/vpnix-manager         # secrets/config (root:vpnix-manager 0750)
-STATE=/var/lib/vpnix-manager   # database, backups (vpnix-manager)
-SVC_USER=vpnix-manager
+PREFIX=/opt/tunnelstead      # application code (root-owned, read-only to the service)
+ETC=/etc/tunnelstead         # secrets/config (root:tunnelstead 0750)
+STATE=/var/lib/tunnelstead   # database, backups (tunnelstead)
+SVC_USER=tunnelstead
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DOMAIN=""; ADMIN_USER="admin"
 
@@ -26,7 +26,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 # Re-runs and updates keep the original --domain (stored by the first install).
-for conf in /etc/vpnix-manager/install.conf /etc/vpnix-create/install.conf; do   # second: a 1.x install being migrated
+for conf in /etc/tunnelstead/install.conf /etc/vpnix-manager/install.conf /etc/vpnix-create/install.conf; do   # old names: being migrated
   if [[ -z "$DOMAIN" && -f "$conf" ]]; then DOMAIN="$(sed -n 's/^DOMAIN=//p' "$conf")"; fi
 done
 [[ "$ADMIN_USER" =~ ^[a-z0-9][a-z0-9._-]{2,63}$ ]] || die "--admin-user must be 3-64 lowercase letters, digits, . _ -"
@@ -55,40 +55,44 @@ apt-get install -y -qq python3 python3-venv curl ca-certificates rsync nftables 
 systemctl disable --now openvpn.service >/dev/null 2>&1 || true   # VPN instances are started per instance, never by default
 ok "python3, nftables, wireguard-tools, openvpn, caddy"
 
-# ---------- migration: VPNix Create 1.x → VPNix Manager 2.x (the product was renamed) ----------
-MIGRATED=0
-if [[ -d /opt/vpnix-create && ! -d "$PREFIX" ]]; then
-  step "Migrating VPNix Create 1.x to VPNix Manager"
-  systemctl disable --now vpnix-create-api vpnix-create-helper >/dev/null 2>&1 || true
+# ---------- migration from the earlier names: VPNix Create (1.x) and VPNix Manager → Tunnelstead ----------
+MIGRATED_FROM=""
+for OLD in vpnix-manager vpnix-create; do
+  [[ -d "/opt/$OLD" && ! -d "$PREFIX" ]] || continue
+  step "Migrating $OLD to Tunnelstead"
+  systemctl disable --now "$OLD-api" "$OLD-helper" >/dev/null 2>&1 || true
   # Same user and group IDs under the new name, so every file keeps its owner.
-  if id vpnix-create &>/dev/null && ! id "$SVC_USER" &>/dev/null; then
-    usermod -l "$SVC_USER" -d "$STATE" vpnix-create
-    getent group vpnix-create >/dev/null && groupmod -n "$SVC_USER" vpnix-create
+  if id "$OLD" &>/dev/null && ! id "$SVC_USER" &>/dev/null; then
+    usermod -l "$SVC_USER" -d "$STATE" "$OLD"
+    if getent group "$OLD" >/dev/null; then groupmod -n "$SVC_USER" "$OLD"; fi
   fi
-  for move in /etc/vpnix-create:/etc/vpnix-manager /var/lib/vpnix-create:/var/lib/vpnix-manager \
-              /var/backups/vpnix-create:/var/backups/vpnix-manager; do
+  for move in "/etc/$OLD:$ETC" "/var/lib/$OLD:$STATE" "/var/backups/$OLD:/var/backups/tunnelstead"; do
     if [[ -e "${move%%:*}" && ! -e "${move##*:}" ]]; then mv "${move%%:*}" "${move##*:}"; fi
   done
-  if [[ -f /etc/vpnix-manager/vpnix-create.env ]]; then mv /etc/vpnix-manager/vpnix-create.env /etc/vpnix-manager/vpnix-manager.env; fi
-  sed -i 's#/var/lib/vpnix-create#/var/lib/vpnix-manager#g; s#/run/vpnix-create#/run/vpnix-manager#g' /etc/vpnix-manager/vpnix-manager.env
-  # The snapshot of 1.x points at the old paths and can't be rolled back to across the rename.
-  rm -f /var/backups/vpnix-manager/snapshot.json /var/backups/vpnix-manager/pre-update.db
-  # VPN configs and the Caddyfile created by 1.x keep being recognised as managed.
-  for f in /etc/wireguard/wg*.conf /etc/openvpn/server/ovpn*.conf /etc/caddy/Caddyfile; do
-    if [[ -f "$f" ]]; then sed -i 's/^# Managed by VPNix Create/# Managed by VPNix Manager/' "$f"; fi
+  if [[ -f "$ETC/$OLD.env" ]]; then mv "$ETC/$OLD.env" "$ETC/tunnelstead.env"; fi
+  # Settings keep their values under the new names (VPNIX_* → TUNNELSTEAD_*), and the database file is renamed.
+  sed -i -e "s#/var/lib/$OLD#$STATE#g" -e "s#/run/$OLD#/run/tunnelstead#g" -e 's/^VPNIX_/TUNNELSTEAD_/' \
+         -e 's#/vpnix\.db#/tunnelstead.db#' "$ETC/tunnelstead.env"
+  for ext in "" -wal -shm; do
+    if [[ -e "$STATE/vpnix.db$ext" && ! -e "$STATE/tunnelstead.db$ext" ]]; then mv "$STATE/vpnix.db$ext" "$STATE/tunnelstead.db$ext"; fi
   done
-  if [[ -f /etc/sysctl.d/90-vpnix-create.conf ]]; then mv /etc/sysctl.d/90-vpnix-create.conf /etc/sysctl.d/90-vpnix-manager.conf; fi
-  rm -f /etc/systemd/system/vpnix-create-api.service /etc/systemd/system/vpnix-create-helper.service \
-        /etc/systemd/system/vpnix-create-updater@.service /etc/systemd/system/caddy.service.d/vpnix-create.conf \
-        /usr/local/sbin/vpnix-create-cli
-  rm -rf /run/vpnix-create
+  # The pre-update snapshot points at the old paths and can't be rolled back to across the rename.
+  rm -f /var/backups/tunnelstead/snapshot.json /var/backups/tunnelstead/pre-update.db
+  # VPN configs and the Caddyfile created under the old name keep being recognised as managed.
+  for f in /etc/wireguard/wg*.conf /etc/openvpn/server/ovpn*.conf /etc/caddy/Caddyfile; do
+    if [[ -f "$f" ]]; then sed -i -E 's/^# Managed by VPNix (Create|Manager)/# Managed by Tunnelstead/' "$f"; fi
+  done
+  if [[ -f "/etc/sysctl.d/90-$OLD.conf" ]]; then mv "/etc/sysctl.d/90-$OLD.conf" /etc/sysctl.d/90-tunnelstead.conf; fi
+  rm -f "/etc/systemd/system/$OLD-api.service" "/etc/systemd/system/$OLD-helper.service" \
+        "/etc/systemd/system/$OLD-updater@.service" "/etc/systemd/system/caddy.service.d/$OLD.conf" "/usr/local/sbin/$OLD-cli"
+  rm -rf "/run/$OLD"
   systemctl daemon-reload
-  MIGRATED=1
+  MIGRATED_FROM="$OLD"
   ok "Data, settings and backups moved; VPN servers keep running"
-fi
+done
 
 # ---------- 7-10: application, user, directories, permissions ----------
-step "Installing VPNix Manager"
+step "Installing Tunnelstead"
 id "$SVC_USER" &>/dev/null || useradd --system --home "$STATE" --shell /usr/sbin/nologin "$SVC_USER"
 install -d -m 0755 "$PREFIX"
 install -d -m 0750 -o root -g "$SVC_USER" "$ETC"
@@ -96,7 +100,7 @@ printf 'DOMAIN=%s\n' "$DOMAIN" > "$ETC/install.conf"; chmod 0640 "$ETC/install.c
 install -d -m 0750 -o "$SVC_USER" -g "$SVC_USER" "$STATE" "$STATE/backups" "$STATE/updates"
 rsync -a --delete --exclude .venv --exclude __pycache__ --exclude tests "$SRC/backend/" "$PREFIX/backend/"
 install -m 0644 "$SRC/VERSION" "$PREFIX/VERSION"
-install -d -m 0755 "$PREFIX/helper" && install -m 0644 "$SRC"/helper/{vpnix_manager_helper,ovpn_ops}.py "$PREFIX/helper/"
+install -d -m 0755 "$PREFIX/helper" && install -m 0644 "$SRC"/helper/{tunnelstead_helper,ovpn_ops}.py "$PREFIX/helper/"
 [[ -d "$PREFIX/venv" ]] || python3 -m venv "$PREFIX/venv"
 "$PREFIX/venv/bin/pip" install -q --upgrade pip
 "$PREFIX/venv/bin/pip" install -q --require-virtualenv -r "$PREFIX/backend/requirements.txt"
@@ -108,65 +112,65 @@ install -d -m 0755 "$PREFIX/updater" && install -m 0644 "$SRC/updater/updater.py
 install -m 0644 "$SRC/installer/release-key.pub" "$PREFIX/release-key.pub"
 chown -R root:root "$PREFIX"; chmod -R u=rwX,go=rX "$PREFIX"
 chmod 0755 "$PREFIX"/installer/*.sh
-cat > /usr/local/sbin/vpnix-manager-cli <<'WRAP'
+cat > /usr/local/sbin/tunnelstead-cli <<'WRAP'
 #!/usr/bin/env bash
 # Root-only administration CLI (runs as the service account with the service configuration).
 set -euo pipefail
 [[ $EUID -eq 0 ]] || { echo "Run as root" >&2; exit 1; }
-set -a; . /etc/vpnix-manager/vpnix-manager.env; set +a
-cd /opt/vpnix-manager/backend && exec runuser -u vpnix-manager -- /opt/vpnix-manager/venv/bin/python -m vpnix_manager.cli "$@"
+set -a; . /etc/tunnelstead/tunnelstead.env; set +a
+cd /opt/tunnelstead/backend && exec runuser -u tunnelstead -- /opt/tunnelstead/venv/bin/python -m tunnelstead.cli "$@"
 WRAP
-chmod 0750 /usr/local/sbin/vpnix-manager-cli
+chmod 0750 /usr/local/sbin/tunnelstead-cli
 ok "Application in $PREFIX, data in $STATE"
 
 # ---------- 13-14: configuration, database, administrator ----------
 step "Configuring"
-if [[ ! -f "$ETC/vpnix-manager.env" ]]; then
+if [[ ! -f "$ETC/tunnelstead.env" ]]; then
   KEY="$("$PREFIX/venv/bin/python" -c 'import base64,os;print(base64.urlsafe_b64encode(os.urandom(32)).decode().rstrip("="))')"
-  cat > "$ETC/vpnix-manager.env" <<ENV
-VPNIX_SECRET_KEY=$KEY
-VPNIX_DATABASE_URL=sqlite:///$STATE/vpnix.db
-VPNIX_COOKIE_SECURE=true
+  cat > "$ETC/tunnelstead.env" <<ENV
+TUNNELSTEAD_SECRET_KEY=$KEY
+TUNNELSTEAD_DATABASE_URL=sqlite:///$STATE/tunnelstead.db
+TUNNELSTEAD_COOKIE_SECURE=true
 ENV
-  chown root:"$SVC_USER" "$ETC/vpnix-manager.env"; chmod 0640 "$ETC/vpnix-manager.env"
-  ok "Generated encryption key ($ETC/vpnix-manager.env, readable only by root and the service)"
+  chown root:"$SVC_USER" "$ETC/tunnelstead.env"; chmod 0640 "$ETC/tunnelstead.env"
+  ok "Generated encryption key ($ETC/tunnelstead.env, readable only by root and the service)"
 else
   ok "Existing configuration kept"
 fi
-cli() { (set -a; . "$ETC/vpnix-manager.env"; set +a; cd "$PREFIX/backend" && runuser -u "$SVC_USER" -- "$PREFIX/venv/bin/python" -m vpnix_manager.cli "$@"); }
-systemctl stop vpnix-manager-api 2>/dev/null || true   # migrations need exclusive access
+cli() { (set -a; . "$ETC/tunnelstead.env"; set +a; cd "$PREFIX/backend" && runuser -u "$SVC_USER" -- "$PREFIX/venv/bin/python" -m tunnelstead.cli "$@"); }
+systemctl stop tunnelstead-api 2>/dev/null || true   # migrations need exclusive access
 cli migrate >/dev/null && ok "Database schema up to date"
 ADMIN_OUT="$(cli init-admin --username "$ADMIN_USER")"
-ADMIN_PW="$(sed -n 's/^VPNIX_ADMIN_PASSWORD=//p' <<<"$ADMIN_OUT")"
+ADMIN_PW="$(sed -n 's/^TUNNELSTEAD_ADMIN_PASSWORD=//p' <<<"$ADMIN_OUT")"
 
 # ---------- 11-12: services and web server ----------
 step "Starting services"
-install -m 0644 "$SRC"/installer/systemd/vpnix-manager-{api,helper}.service "$SRC"/installer/systemd/vpnix-manager-updater@.service /etc/systemd/system/
-install -d -m 0700 /var/backups/vpnix-manager
+install -m 0644 "$SRC"/installer/systemd/tunnelstead-{api,helper}.service "$SRC"/installer/systemd/tunnelstead-updater@.service /etc/systemd/system/
+install -d -m 0700 /var/backups/tunnelstead
 systemctl daemon-reload
-systemctl enable vpnix-manager-helper vpnix-manager-api >/dev/null 2>&1
-systemctl restart vpnix-manager-helper vpnix-manager-api   # pick up new code on re-runs
-for _ in $(seq 10); do [[ -S /run/vpnix-manager/helper.sock ]] && break; sleep 1; done
-[[ -S /run/vpnix-manager/helper.sock ]] || die "Privileged helper did not start: journalctl -u vpnix-manager-helper"
+systemctl enable tunnelstead-helper tunnelstead-api >/dev/null 2>&1
+systemctl restart tunnelstead-helper tunnelstead-api   # pick up new code on re-runs
+for _ in $(seq 10); do [[ -S /run/tunnelstead/helper.sock ]] && break; sleep 1; done
+[[ -S /run/tunnelstead/helper.sock ]] || die "Privileged helper did not start: journalctl -u tunnelstead-helper"
 ok "Privileged helper running (socket 0660 root:$SVC_USER)"
 SITE="${DOMAIN:-$(ip -4 route get 1.1.1.1 | awk '{for(i=1;i<NF;i++) if($i=="src") print $(i+1)}')}"
 TLS_LINE=$([[ -n "$DOMAIN" ]] && echo "" || echo "tls internal")
-if [[ -f /etc/caddy/Caddyfile ]] && ! grep -q "Managed by VPNix Manager" /etc/caddy/Caddyfile && [[ -s /etc/caddy/Caddyfile ]] \
+if [[ -f /etc/caddy/Caddyfile ]] && ! grep -q "Managed by Tunnelstead" /etc/caddy/Caddyfile && [[ -s /etc/caddy/Caddyfile ]] \
    && ! grep -q "^:80" /etc/caddy/Caddyfile; then
-  die "/etc/caddy/Caddyfile has your own configuration. It was not changed; add VPNix Manager manually (see docs/INSTALL.md)."
+  die "/etc/caddy/Caddyfile has your own configuration. It was not changed; add Tunnelstead manually (see docs/INSTALL.md)."
 fi
 # Caddy's admin API must not be reachable by other local users (it can rewrite the web server's config):
 # move it from TCP 127.0.0.1:2019 to a socket in a directory only the caddy user can enter.
 install -d -m 0755 /etc/systemd/system/caddy.service.d
-cat > /etc/systemd/system/caddy.service.d/vpnix-manager.conf <<'DROPIN'
-# Managed by VPNix Manager installer
+cat > /etc/systemd/system/caddy.service.d/tunnelstead.conf <<'DROPIN'
+# Managed by Tunnelstead installer
 [Service]
 RuntimeDirectory=caddy
 RuntimeDirectoryMode=0700
 DROPIN
 systemctl daemon-reload
 cat > /etc/caddy/Caddyfile <<CADDY
-# Managed by VPNix Manager installer. Port 80 redirects to HTTPS.
+# Managed by Tunnelstead installer. Port 80 redirects to HTTPS.
 {
 	admin unix//run/caddy/admin.sock
 }
@@ -201,23 +205,23 @@ ok "HTTPS on $SITE ($([[ -n "$DOMAIN" ]] && echo "Let's Encrypt" || echo "local 
 
 # ---------- 15: health ----------
 for _ in $(seq 30); do curl -fsS http://127.0.0.1:8090/api/health >/dev/null 2>&1 && break; sleep 1; done
-curl -fsS http://127.0.0.1:8090/api/health >/dev/null || die "The API did not become healthy: journalctl -u vpnix-manager-api"
+curl -fsS http://127.0.0.1:8090/api/health >/dev/null || die "The API did not become healthy: journalctl -u tunnelstead-api"
 ok "API healthy"
-if (( MIGRATED )); then
-  # Redeploy every VPN server and the firewall under the new names, then remove what 1.x left behind.
-  cli resync >/dev/null || die "Migrated, but redeploying the VPN servers failed: run 'sudo vpnix-manager-cli resync'"
-  nft delete table inet vpnix_create 2>/dev/null || true
-  rm -rf /opt/vpnix-create /opt/vpnix-create.prev
-  ok "VPN servers and firewall redeployed as VPNix Manager"
+if [[ -n "$MIGRATED_FROM" ]]; then
+  # Redeploy every VPN server and the firewall under the new names, then remove what the old version left behind.
+  cli resync >/dev/null || die "Migrated, but redeploying the VPN servers failed: run 'sudo tunnelstead-cli resync'"
+  nft delete table inet "${MIGRATED_FROM//-/_}" 2>/dev/null || true
+  rm -rf "/opt/$MIGRATED_FROM" "/opt/$MIGRATED_FROM.prev"
+  ok "VPN servers and firewall redeployed as Tunnelstead"
 fi
 
 # ---------- 16: results ----------
-printf '\n%s VPNix Manager is installed.%s\n\n' "$c_ok$c_b" "$c_0"
+printf '\n%s Tunnelstead is installed.%s\n\n' "$c_ok$c_b" "$c_0"
 printf '  Open:      https://%s/\n' "$SITE"
 if [[ -n "$ADMIN_PW" ]]; then
   printf '  Username:  %s\n  Password:  %s%s%s\n\n' "$ADMIN_USER" "$c_b" "$ADMIN_PW" "$c_0"
   printf '  %sThis temporary password is shown only now and must be changed at first sign-in.%s\n' "$c_dim" "$c_0"
-  printf '  %sLost it? Run: sudo vpnix-manager-cli reset-admin --username %s%s\n\n' "$c_dim" "$ADMIN_USER" "$c_0"
+  printf '  %sLost it? Run: sudo tunnelstead-cli reset-admin --username %s%s\n\n' "$c_dim" "$ADMIN_USER" "$c_0"
 else
   printf '  An administrator already exists; existing credentials were kept.\n\n'
 fi

@@ -1,10 +1,10 @@
-"""Alembic environment. The database URL comes from VPNix settings (environment), never from alembic.ini."""
+"""Alembic environment. The database URL comes from Tunnelstead settings (environment), never from alembic.ini."""
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from vpnix_manager import models  # noqa: F401  (registers tables)
-from vpnix_manager.config import get_settings
-from vpnix_manager.db import Base
+from tunnelstead import models  # noqa: F401  (registers tables)
+from tunnelstead.config import get_settings
+from tunnelstead.db import Base
 
 config = context.config
 if not config.get_main_option("sqlalchemy.url"):

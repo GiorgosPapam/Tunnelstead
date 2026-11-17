@@ -12,7 +12,7 @@ from .engines.registry import engine
 from .helper_client import HelperError
 from .models import Client, ClientStat, ClientStatus, HostMetric, InstanceMetric, InstanceState, Setting, UserSession, VpnInstance, utcnow
 
-log = logging.getLogger("vpnix.collector")
+log = logging.getLogger("tunnelstead.collector")
 INTERVAL = 30
 RETENTION = timedelta(days=30)
 _prev: dict = {}   # instance id -> (monotonic time, total rx, total tx) for throughput rates

@@ -35,7 +35,7 @@ export default function Clients({ me, instance, onChange }: { me: Me; instance: 
     const head = ["name", "instance", "status", "ipv4", "ipv6", "rx_bytes", "tx_bytes", "last_handshake", "expires_at", "tags"];
     const csv = [head, ...(rows ?? []).map((c) => [c.name, c.instance_name, c.status, c.ipv4, c.ipv6 ?? "", c.rx_bytes, c.tx_bytes, c.last_handshake ?? "", c.expires_at ?? "", c.tags.join(" ")])]
       .map((r) => r.map((v) => `"${String(v).replaceAll('"', '""')}"`).join(",")).join("\n");
-    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" })); a.download = "vpnix-clients.csv"; a.click();
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" })); a.download = "tunnelstead-clients.csv"; a.click();
   };
 
   return <>

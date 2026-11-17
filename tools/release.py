@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Build and sign a VPNix Manager release bundle (maintainers only).
+"""Build and sign a Tunnelstead release bundle (maintainers only).
 
-    python tools/release.py keygen  --key ~/.vpnix-manager/release-signing.key   # once; prints the public key
-    python tools/release.py build   --key ~/.vpnix-manager/release-signing.key [--version X.Y.Z] [--out dist]
+    python tools/release.py keygen  --key ~/.tunnelstead/release-signing.key   # once; prints the public key
+    python tools/release.py build   --key ~/.tunnelstead/release-signing.key [--version X.Y.Z] [--out dist]
 
-The bundle is `vpnix-manager-X.Y.Z.tar.gz` (source + built web UI + VERSION) with `vpnix-manager-X.Y.Z.tar.gz.sig`.
-The Ed25519 signature covers "vpnix-manager-release:<version>:<sha256 of the bundle>", so a signed old bundle can
+The bundle is `tunnelstead-X.Y.Z.tar.gz` (source + built web UI + VERSION) with `tunnelstead-X.Y.Z.tar.gz.sig`.
+The Ed25519 signature covers "tunnelstead-release:<version>:<sha256 of the bundle>", so a signed old bundle can
 never be passed off as a newer version. The private key must never be committed or uploaded anywhere.
 """
 import argparse
@@ -27,7 +27,7 @@ VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
 
 
 def message(version: str, sha256: str) -> bytes:
-    return f"vpnix-manager-release:{version}:{sha256}".encode()
+    return f"tunnelstead-release:{version}:{sha256}".encode()
 
 
 def load_key(path: str) -> Ed25519PrivateKey:
@@ -56,7 +56,7 @@ def build(key: str, version: str | None, out: str, replace: dict | None = None) 
     if not (ROOT / "frontend" / "dist" / "index.html").exists():
         sys.exit("frontend/dist is missing: run npm run build in frontend/ first")
     src = subprocess.run(["git", "-C", str(ROOT), "archive", "--format=tar", "HEAD"], capture_output=True, check=True).stdout
-    buf, prefix = io.BytesIO(), f"vpnix-manager-{version}/"
+    buf, prefix = io.BytesIO(), f"tunnelstead-{version}/"
     with tarfile.open(fileobj=buf, mode="w:gz") as out_tar, tarfile.open(fileobj=io.BytesIO(src)) as git_tar:
         for m in git_tar.getmembers():
             if m.name == "VERSION":
@@ -79,7 +79,7 @@ def build(key: str, version: str | None, out: str, replace: dict | None = None) 
     sig = load_key(key).sign(message(version, digest))
     d = Path(out)
     d.mkdir(parents=True, exist_ok=True)
-    bundle = d / f"vpnix-manager-{version}.tar.gz"
+    bundle = d / f"tunnelstead-{version}.tar.gz"
     bundle.write_bytes(blob)
     (d / f"{bundle.name}.sig").write_text(base64.b64encode(sig).decode() + "\n")
     print(f"{bundle}  sha256={digest}")

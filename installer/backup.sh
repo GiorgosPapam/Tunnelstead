@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Create an encrypted VPNix Manager backup now.
+# Create an encrypted Tunnelstead backup now.
 # Usage: sudo backup.sh [--copy-to DIR]
-# The passphrase is asked for (or taken from VPNIX_BACKUP_PASSPHRASE). Without it the backup cannot be restored.
+# The passphrase is asked for (or taken from TUNNELSTEAD_BACKUP_PASSPHRASE). Without it the backup cannot be restored.
 set -Eeuo pipefail
 [[ $EUID -eq 0 ]] || { echo "Run as root (sudo)" >&2; exit 1; }
 COPY=""
@@ -12,7 +12,7 @@ while [[ $# -gt 0 ]]; do
     *) echo "Unknown option: $1" >&2; exit 2 ;;
   esac
 done
-out="$(vpnix-manager-cli backup)"
+out="$(tunnelstead-cli backup)"
 echo "$out"
 if [[ -n "$COPY" ]]; then
   f="$(sed -n 's/^Backup written: \(.*\) (.*$/\1/p' <<<"$out")"

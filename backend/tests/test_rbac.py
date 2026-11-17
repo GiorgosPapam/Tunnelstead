@@ -2,7 +2,7 @@
 import re
 
 from fastapi.testclient import TestClient
-from vpnix_manager.models import Role
+from tunnelstead.models import Role
 
 from tests.conftest import login, make_user
 

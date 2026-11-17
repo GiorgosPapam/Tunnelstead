@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 const NEW_PW = "my-own-secure-passphrase";
-const initialPw = () => readFileSync(join(tmpdir(), "vpnix-manager-ui-admin.txt"), "utf8").trim();
+const initialPw = () => readFileSync(join(tmpdir(), "tunnelstead-ui-admin.txt"), "utf8").trim();
 
 async function signIn(page: Page, user: string, pw: string) {
   await page.goto("/");

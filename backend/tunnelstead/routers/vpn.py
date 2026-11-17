@@ -528,7 +528,7 @@ def vpn_summary(_: User = Depends(view), db: DB = Depends(get_db)):
 
 @router.get("/certificates")
 def certificates(_: User = Depends(view), db: DB = Depends(get_db)):
-    """Expiry overview of every certificate VPNix Manager issued (no key material)."""
+    """Expiry overview of every certificate Tunnelstead issued (no key material)."""
     now, out = utcnow(), []
 
     def row(kind, name, instance, expires):

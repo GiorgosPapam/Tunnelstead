@@ -14,11 +14,11 @@ from wireguard_e2e import Api, check, results, sh, temp_admin  # noqa: E402
 
 
 def own():
-    return sh("nft", "list", "table", "inet", "vpnix_manager", check=False).stdout
+    return sh("nft", "list", "table", "inet", "tunnelstead", check=False).stdout
 
 
 def others():
-    tables = [t for t in sh("nft", "list", "tables").stdout.splitlines() if "vpnix_manager" not in t]
+    tables = [t for t in sh("nft", "list", "tables").stdout.splitlines() if "tunnelstead" not in t]
     return {t: sh("nft", "list", *t.split()).stdout for t in tables}
 
 

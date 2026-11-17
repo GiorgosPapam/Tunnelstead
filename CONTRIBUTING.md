@@ -23,7 +23,7 @@ CI runs the same checks plus dependency audits, a secret scan and CodeQL.
 - Anything that changes the system goes through the privileged helper as a **new allowlisted method that
   validates every argument before doing anything**, with tests that feed it hostile input. The API never runs
   commands itself.
-- Never touch resources VPNix Manager did not create (other WireGuard/OpenVPN configs, nftables tables, Caddy sites).
+- Never touch resources Tunnelstead did not create (other WireGuard/OpenVPN configs, nftables tables, Caddy sites).
 - Every API route declares its permission; add an RBAC test for new routes.
 - Database changes need an Alembic migration (`alembic revision --autogenerate`) and must keep upgrades working.
 - Changes to the helper, firewall, VPN engines, backups or updates must also pass the real-system tests in

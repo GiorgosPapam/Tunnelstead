@@ -1,4 +1,4 @@
-"""vpnix-manager-cli: installer-side operations. Never reachable over HTTP."""
+"""tunnelstead-cli: installer-side operations. Never reachable over HTTP."""
 import argparse
 import base64
 import os
@@ -23,7 +23,7 @@ def migrate(engine) -> None:
 
 
 def _passphrase(confirm: bool) -> str:
-    pw = os.environ.get("VPNIX_BACKUP_PASSPHRASE")
+    pw = os.environ.get("TUNNELSTEAD_BACKUP_PASSPHRASE")
     if pw:
         return pw
     import getpass
@@ -33,14 +33,14 @@ def _passphrase(confirm: bool) -> str:
     return pw
 
 
-ENV_FILE = "/etc/vpnix-manager/vpnix-manager.env"
+ENV_FILE = "/etc/tunnelstead/tunnelstead.env"
 
 
 def _set_secret_key(key: str) -> None:
     """Restoring onto another server: the database secrets were encrypted with the backup's key, so adopt it."""
     import re as _re
     text = open(ENV_FILE, encoding="utf-8").read()
-    text = _re.sub(r"(?m)^VPNIX_SECRET_KEY=.*$", f"VPNIX_SECRET_KEY={key}", text)
+    text = _re.sub(r"(?m)^TUNNELSTEAD_SECRET_KEY=.*$", f"TUNNELSTEAD_SECRET_KEY={key}", text)
     tmp = ENV_FILE + ".new"
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o640)
     with os.fdopen(fd, "w", encoding="utf-8") as f:
@@ -49,15 +49,15 @@ def _set_secret_key(key: str) -> None:
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(prog="vpnix-manager-cli")
+    ap = argparse.ArgumentParser(prog="tunnelstead-cli")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("gen-secret", help="print a new VPNIX_SECRET_KEY")
+    sub.add_parser("gen-secret", help="print a new TUNNELSTEAD_SECRET_KEY")
     sub.add_parser("migrate", help="apply database migrations (safe to re-run)")
     ia = sub.add_parser("init-admin", help="create the first administrator with a random temporary password")
     ia.add_argument("--username", default="admin")
     ra = sub.add_parser("reset-admin", help="emergency: reset an administrator's password (prints it once)")
     ra.add_argument("--username", required=True)
-    sub.add_parser("backup", help="create an encrypted backup now (passphrase from VPNIX_BACKUP_PASSPHRASE or prompt)")
+    sub.add_parser("backup", help="create an encrypted backup now (passphrase from TUNNELSTEAD_BACKUP_PASSPHRASE or prompt)")
     rs = sub.add_parser("restore", help="restore a backup file (the API service must be stopped)")
     rs.add_argument("file")
     rs.add_argument("--yes", action="store_true", help="do not ask for confirmation")
@@ -84,7 +84,7 @@ def main(argv=None) -> int:
         from . import backup
         from .config import get_settings
         m, raw = backup.open_backup(Path(a.file), _passphrase(confirm=False))
-        print(f"Backup from {m['created_at']} (VPNix Manager {m['app_version']}): {m['contents']}")
+        print(f"Backup from {m['created_at']} (Tunnelstead {m['app_version']}): {m['contents']}")
         if not a.yes and input("Replace ALL current data with this backup? Type 'restore': ").strip() != "restore":
             print("Cancelled; nothing changed.")
             return 1
@@ -98,7 +98,7 @@ def main(argv=None) -> int:
             print("Adopted the secret key from the backup.")
         engine.dispose()
         migrate(engine)
-        print("Restored. Start the API and run 'vpnix-manager-cli resync'.")
+        print("Restored. Start the API and run 'tunnelstead-cli resync'.")
         return 0
     if a.cmd == "resync":
         from .helper_client import Helper
@@ -120,7 +120,7 @@ def main(argv=None) -> int:
         db.add(User(username=a.username.lower(), role=Role.ADMIN, password_hash=hash_password(pw),
                     must_change_password=True))
         db.commit()
-        print(f"VPNIX_ADMIN_USERNAME={a.username.lower()}\nVPNIX_ADMIN_PASSWORD={pw}")
+        print(f"TUNNELSTEAD_ADMIN_USERNAME={a.username.lower()}\nTUNNELSTEAD_ADMIN_PASSWORD={pw}")
         return 0
     if a.cmd == "reset-admin":
         u = db.scalar(select(User).where(User.username == a.username.lower(), User.role == Role.ADMIN))
@@ -130,7 +130,7 @@ def main(argv=None) -> int:
         pw = generate_password()
         u.password_hash, u.must_change_password, u.failed_logins, u.locked_until = hash_password(pw), True, 0, None
         db.commit()
-        print(f"VPNIX_ADMIN_PASSWORD={pw}")
+        print(f"TUNNELSTEAD_ADMIN_PASSWORD={pw}")
         return 0
     return 1
 

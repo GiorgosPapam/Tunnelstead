@@ -9,8 +9,8 @@ import tarfile
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
-from vpnix_manager import __version__, updates
-from vpnix_manager.models import Role
+from tunnelstead import __version__, updates
+from tunnelstead.models import Role
 
 from tests.conftest import login, make_user
 
@@ -29,14 +29,14 @@ def make_bundle(d: pathlib.Path, key, version, content_version=None, extra=None)
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w:gz") as t:
         for name, data in {"VERSION": (content_version or version) + "\n", "installer/install.sh": "exit 0\n", **(extra or {})}.items():
-            info = tarfile.TarInfo(f"vpnix-manager-{version}/{name}")
+            info = tarfile.TarInfo(f"tunnelstead-{version}/{name}")
             info.size = len(data.encode())
             t.addfile(info, io.BytesIO(data.encode()))
     blob = buf.getvalue()
-    p = d / f"vpnix-manager-{version}.tar.gz"
+    p = d / f"tunnelstead-{version}.tar.gz"
     p.write_bytes(blob)
     import hashlib
-    sig = key.sign(f"vpnix-manager-release:{version}:{hashlib.sha256(blob).hexdigest()}".encode())
+    sig = key.sign(f"tunnelstead-release:{version}:{hashlib.sha256(blob).hexdigest()}".encode())
     pathlib.Path(str(p) + ".sig").write_text(base64.b64encode(sig).decode())
     return p
 
@@ -54,8 +54,8 @@ def key(tmp_path, monkeypatch):
 def feed(tmp_path, monkeypatch):
     d = tmp_path / "feed"
     d.mkdir()
-    monkeypatch.setenv("VPNIX_UPDATE_FEED_DIR", str(d))
-    monkeypatch.setenv("VPNIX_UPDATE_DIR", str(tmp_path / "dl"))
+    monkeypatch.setenv("TUNNELSTEAD_UPDATE_FEED_DIR", str(d))
+    monkeypatch.setenv("TUNNELSTEAD_UPDATE_DIR", str(tmp_path / "dl"))
     return d
 
 
@@ -97,7 +97,7 @@ def test_relabelled_old_bundle_refused(app, db, helper, key, feed):
     k, _ = key
     old = make_bundle(feed, k, __version__)
     new = bump(__version__, 5)
-    target = feed / f"vpnix-manager-{new}.tar.gz"
+    target = feed / f"tunnelstead-{new}.tar.gz"
     old.rename(target)
     pathlib.Path(str(old) + ".sig").rename(str(target) + ".sig")
     make_user(db, "boss")
@@ -109,8 +109,8 @@ def test_settings_and_permissions(app, db, helper):
     make_user(db, "boss")
     c = login(app, "boss")
     assert c.put("/api/updates/settings", json={"repo": "bad repo", "mode": "auto"}).status_code == 422
-    r = c.put("/api/updates/settings", json={"repo": "example/vpnix-manager", "mode": "auto", "day": "sun", "hour": 3}).json()
-    assert r["settings"] == {"repo": "example/vpnix-manager", "mode": "auto", "day": "sun", "hour": 3}
+    r = c.put("/api/updates/settings", json={"repo": "example/tunnelstead", "mode": "auto", "day": "sun", "hour": 3}).json()
+    assert r["settings"] == {"repo": "example/tunnelstead", "mode": "auto", "day": "sun", "hour": 3}
     make_user(db, "op", role=Role.OPERATOR)
     assert login(app, "op").get("/api/updates").status_code == 403
     assert c.post("/api/updates/rollback").status_code == 422  # nothing to roll back
@@ -152,7 +152,7 @@ def test_updater_rejects_unsafe_paths(tmp_path, key, bad):
     k, _ = key
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w:gz") as t:
-        for name in ("vpnix-manager-9.0.0/VERSION", bad if bad.startswith(("/", "other")) else f"vpnix-manager-9.0.0/{bad}"):
+        for name in ("tunnelstead-9.0.0/VERSION", bad if bad.startswith(("/", "other")) else f"tunnelstead-9.0.0/{bad}"):
             info = tarfile.TarInfo(name)
             info.size = 6
             t.addfile(info, io.BytesIO(b"9.0.0\n"))
@@ -165,7 +165,7 @@ def test_updater_rejects_unsafe_paths(tmp_path, key, bad):
 def test_updater_rejects_links_and_version_mismatch(tmp_path, key):
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w:gz") as t:
-        link = tarfile.TarInfo("vpnix-manager-9.0.0/x")
+        link = tarfile.TarInfo("tunnelstead-9.0.0/x")
         link.type, link.linkname = tarfile.SYMTYPE, "/etc/shadow"
         t.addfile(link)
     p = tmp_path / "l.tar.gz"
@@ -199,7 +199,7 @@ def test_release_tool_signature_matches_updater(tmp_path):
     spec2 = importlib.util.spec_from_file_location("release", ROOT / "tools" / "release.py")
     R = importlib.util.module_from_spec(spec2)
     spec2.loader.exec_module(R)
-    assert R.message("1.2.3", "ab") == U.message("1.2.3", "ab") == b"vpnix-manager-release:1.2.3:ab"
+    assert R.message("1.2.3", "ab") == U.message("1.2.3", "ab") == b"tunnelstead-release:1.2.3:ab"
     assert json.loads(json.dumps({"ok": 1}))  # sanity
 
 
@@ -220,7 +220,7 @@ def test_refused_attempt_keeps_rollback(tmp_path, monkeypatch):
 
 
 def test_api_rollback_follows_snapshot(app, db, helper, monkeypatch, tmp_path):
-    monkeypatch.setenv("VPNIX_UPDATE_DIR", str(tmp_path))
+    monkeypatch.setenv("TUNNELSTEAD_UPDATE_DIR", str(tmp_path))
     make_user(db, "boss")
     c = login(app, "boss")
     (tmp_path / "status.json").write_text(json.dumps({"state": "failed", "rollback_to": "0.1.0"}))

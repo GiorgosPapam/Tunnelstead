@@ -12,7 +12,7 @@ from .models import User, UserSession, utcnow
 from .permissions import has
 from .security import consteq, sha256
 
-COOKIE = "vpnix_session"
+COOKIE = "tunnelstead_session"
 CSRF_HEADER = "X-CSRF-Token"
 SAFE = {"GET", "HEAD", "OPTIONS"}
 PASSWORD_CHANGE_ALLOWED = {"/api/auth/me", "/api/auth/password", "/api/auth/logout"}

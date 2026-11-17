@@ -1,21 +1,21 @@
 [Unit]
-Description=VPNix Manager API
+Description=Tunnelstead API
 After=network-online.target
 Wants=network-online.target
 
 [Service]
-User=vpnix-manager
-Group=vpnix-manager
-EnvironmentFile=/etc/vpnix-manager/vpnix-manager.env
-WorkingDirectory=/opt/vpnix-manager/backend
-ExecStart=/opt/vpnix-manager/venv/bin/uvicorn vpnix_manager.main:app --host 127.0.0.1 --port 8090 --proxy-headers --forwarded-allow-ips 127.0.0.1 --no-server-header
+User=tunnelstead
+Group=tunnelstead
+EnvironmentFile=/etc/tunnelstead/tunnelstead.env
+WorkingDirectory=/opt/tunnelstead/backend
+ExecStart=/opt/tunnelstead/venv/bin/uvicorn tunnelstead.main:app --host 127.0.0.1 --port 8090 --proxy-headers --forwarded-allow-ips 127.0.0.1 --no-server-header
 Restart=on-failure
 # Hardening: unprivileged, no capabilities, read-only system, only its state dir writable.
 NoNewPrivileges=true
 CapabilityBoundingSet=
 AmbientCapabilities=
 ProtectSystem=strict
-ReadWritePaths=/var/lib/vpnix-manager
+ReadWritePaths=/var/lib/tunnelstead
 ProtectHome=true
 PrivateTmp=true
 PrivateDevices=true

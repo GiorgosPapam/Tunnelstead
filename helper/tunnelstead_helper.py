@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""vpnix-manager-helper: the ONLY VPNix Manager component that runs as root.
+"""tunnelstead-helper: the ONLY Tunnelstead component that runs as root.
 
-Listens on /run/vpnix-manager/helper.sock (0660 root:vpnix-manager) and serves a fixed allowlist of operations.
+Listens on /run/tunnelstead/helper.sock (0660 root:tunnelstead) and serves a fixed allowlist of operations.
 Rules enforced here, independently of the API:
   * every argument is validated (interface names, ports, keys, CIDRs, addresses) before anything happens;
   * external programs are run with argv lists only, never a shell;
-  * WireGuard operations only touch interfaces whose config file carries the VPNix Manager marker, so
+  * WireGuard operations only touch interfaces whose config file carries the Tunnelstead marker, so
     pre-existing, hand-made WireGuard setups are never modified (module isolation);
   * firewall operations only replace the application's own nftables table.
 Standard library only, so the privileged code has no third-party dependencies.
@@ -20,10 +20,10 @@ import subprocess
 import sys
 from typing import Any
 
-SOCKET = os.environ.get("VPNIX_HELPER_SOCKET", "/run/vpnix-manager/helper.sock")
+SOCKET = os.environ.get("TUNNELSTEAD_HELPER_SOCKET", "/run/tunnelstead/helper.sock")
 WG_DIR = "/etc/wireguard"
-MARKER = "# Managed by VPNix Manager - do not edit by hand"
-NFT_TABLE = "vpnix_manager"
+MARKER = "# Managed by Tunnelstead - do not edit by hand"
+NFT_TABLE = "tunnelstead"
 WG_IFACE = re.compile(r"^wg[0-9]{1,3}$")
 TUN_IFACE = re.compile(r"^(wg|ovpn)[0-9]{1,3}$")  # interfaces the firewall may reference
 ANY_IFACE = re.compile(r"^[a-zA-Z0-9_.:-]{1,15}$")
@@ -101,7 +101,7 @@ def _managed(iface) -> bool:
 def _require_managed_or_free(iface):
     exists = os.path.exists(_conf_path(iface)) or run("ip", "link", "show", iface, check=False).returncode == 0
     if exists and not _managed(iface):
-        raise Invalid(f"{iface} exists and is not managed by VPNix Manager; refusing to touch it")
+        raise Invalid(f"{iface} exists and is not managed by Tunnelstead; refusing to touch it")
 
 
 def _write_secret(path, content):
@@ -175,7 +175,7 @@ def wg_service(iface, action):
     if action not in ("start", "stop", "restart", "enable", "disable", "status"):
         raise Invalid("bad action")
     if not _managed(iface):
-        raise Invalid(f"{iface} is not managed by VPNix Manager")
+        raise Invalid(f"{iface} is not managed by Tunnelstead")
     unit = f"wg-quick@{iface}.service"
     if action == "status":
         return {"active": run("systemctl", "is-active", unit, check=False).stdout.strip() == "active",
@@ -189,7 +189,7 @@ def wg_delete(iface):
     if not _managed(iface):
         if not os.path.exists(_conf_path(iface)):
             return {"ok": True, "note": "already gone"}
-        raise Invalid(f"{iface} is not managed by VPNix Manager")
+        raise Invalid(f"{iface} is not managed by Tunnelstead")
     run("systemctl", "disable", "--now", f"wg-quick@{iface}.service", check=False)
     run("ip", "link", "del", "dev", iface, check=False)
     os.unlink(_conf_path(iface))
@@ -368,8 +368,8 @@ def sys_forwarding(ipv4=True, ipv6=True):
     if ipv6:
         run("sysctl", "-qw", "net.ipv6.conf.all.forwarding=1")
         conf.append("net.ipv6.conf.all.forwarding=1")
-    _write_secret("/etc/sysctl.d/90-vpnix-manager.conf", "\n".join(conf) + "\n")
-    os.chmod("/etc/sysctl.d/90-vpnix-manager.conf", 0o644)
+    _write_secret("/etc/sysctl.d/90-tunnelstead.conf", "\n".join(conf) + "\n")
+    os.chmod("/etc/sysctl.d/90-tunnelstead.conf", 0o644)
     return {"ok": True}
 
 
@@ -380,12 +380,12 @@ def sys_status():
             "nftables": os.path.exists(BIN["nft"]), "kernel": os.uname().release}
 
 
-JOURNAL_UNIT = re.compile(r"^(vpnix-manager-api|vpnix-manager-helper|caddy|wg-quick@wg[0-9]{1,3}|openvpn-server@ovpn[0-9]{1,3})$")
+JOURNAL_UNIT = re.compile(r"^(tunnelstead-api|tunnelstead-helper|caddy|wg-quick@wg[0-9]{1,3}|openvpn-server@ovpn[0-9]{1,3})$")
 PRIORITY = {"error": "3", "warning": "4", "info": "6"}
 
 
 def sys_journal(units, lines=200, priority="info", since_hours=24):
-    """Read-only service logs for VPNix Manager's own units (journald handles storage and rotation)."""
+    """Read-only service logs for Tunnelstead's own units (journald handles storage and rotation)."""
     if not isinstance(units, list) or not 1 <= len(units) <= 20 or not all(isinstance(u, str) and JOURNAL_UNIT.match(u) for u in units):
         raise Invalid("bad unit")
     if not isinstance(lines, int) or isinstance(lines, bool) or not 1 <= lines <= 2000:
@@ -420,9 +420,9 @@ def sys_update(action, version=None):
     if action == "install":
         if not isinstance(version, str) or not UPDATE_VERSION.match(version):
             raise Invalid("bad version")
-        unit = f"vpnix-manager-updater@install-{version}.service"
+        unit = f"tunnelstead-updater@install-{version}.service"
     elif action == "rollback" and version is None:
-        unit = "vpnix-manager-updater@rollback.service"
+        unit = "tunnelstead-updater@rollback.service"
     else:
         raise Invalid("bad action")
     run("systemctl", "reset-failed", unit, check=False)
@@ -475,9 +475,9 @@ class Handler(socketserver.StreamRequestHandler):
 
 def main():
     if os.geteuid() != 0:
-        sys.exit("vpnix-manager-helper must run as root")
+        sys.exit("tunnelstead-helper must run as root")
     import grp
-    gid = grp.getgrnam("vpnix-manager").gr_gid
+    gid = grp.getgrnam("tunnelstead").gr_gid
     rundir = os.path.dirname(SOCKET)
     os.makedirs(rundir, exist_ok=True)
     os.chown(rundir, 0, gid)

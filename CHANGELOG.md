@@ -4,15 +4,16 @@ All notable changes. Versions follow [semantic versioning](https://semver.org/).
 
 ## 2.0.0
 
-**VPNix Create is now VPNix Manager.** Everything was renamed: the dashboard, services (`vpnix-manager-api`,
-`vpnix-manager-helper`), folders (`/opt/vpnix-manager`, `/etc/vpnix-manager`, `/var/lib/vpnix-manager`), the CLI
-(`vpnix-manager-cli`), the firewall table (`inet vpnix_manager`) and the release files (`vpnix-manager-X.Y.Z.tar.gz`).
+**VPNix Create is now Tunnelstead.** Everything was renamed: the dashboard, services (`tunnelstead-api`,
+`tunnelstead-helper`), folders (`/opt/tunnelstead`, `/etc/tunnelstead`, `/var/lib/tunnelstead`), the CLI
+(`tunnelstead-cli`), the firewall table (`inet tunnelstead`), settings (`VPNIX_*` → `TUNNELSTEAD_*`), the database
+file (`tunnelstead.db`), backup files (`tunnelstead-backup-….tsbk`) and the release files (`tunnelstead-X.Y.Z.tar.gz`).
 
 - **Upgrading from 1.0.0:** a 1.0.0 installation does not offer this update automatically, because the release files
   have new names. Run `sudo bash installer/install.sh` from the 2.0.0 bundle once. It migrates in place: users,
   VPN servers, clients, keys, firewall rules, settings and backups are kept, and your VPN servers keep running.
   Later updates work from the dashboard again.
-- Backups made by 1.0.0 can still be restored.
+- Backups made by 1.0.0 (`vpnix-backup-….vbk`) can still be restored.
 - Dialogs and the top bar stay readable when the browser can't blur (solid glass base). The menu collapses below
   1280 px, and an account badge replaces the user name.
 

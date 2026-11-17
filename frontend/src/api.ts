@@ -22,7 +22,7 @@ export async function api<T = unknown>(path: string, opts: { method?: string; bo
         : Array.isArray(j.detail) ? j.detail.map((d: { loc?: string[]; msg: string }) => `${d.loc?.at(-1) ?? "field"}: ${d.msg}`).join("; ")
         : msg;
     } catch { /* not JSON */ }
-    if (r.status === 401) window.dispatchEvent(new Event("vpnix:signed-out"));
+    if (r.status === 401) window.dispatchEvent(new Event("tunnelstead:signed-out"));
     throw new ApiError(r.status, msg);
   }
   return r.status === 204 ? (undefined as T) : r.json();

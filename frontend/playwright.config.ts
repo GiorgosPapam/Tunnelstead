@@ -6,6 +6,6 @@ export default defineConfig({
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: [
     { command: "node e2e/start-api.mjs", url: "http://127.0.0.1:8011/api/health", reuseExistingServer: false, timeout: 60_000 },
-    { command: "npx vite preview --port 4181 --strictPort", url: "http://localhost:4181", reuseExistingServer: false, env: { VPNIX_API_PORT: "8011" } },
+    { command: "npx vite preview --port 4181 --strictPort", url: "http://localhost:4181", reuseExistingServer: false, env: { TUNNELSTEAD_API_PORT: "8011" } },
   ],
 });

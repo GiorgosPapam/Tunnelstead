@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Real-host end-to-end test for Phase 6 (signed updates). Run as root; VPNIX_E2E_BASE is the installed version (V0).
+"""Real-host end-to-end test for Phase 6 (signed updates). Run as root; TUNNELSTEAD_E2E_BASE is the installed version (V0).
 
-Needs signed bundles in FEED (default /srv/vpnix-feed): V0 (downgrade check), V1 (good update) and V2 (signed
+Needs signed bundles in FEED (default /srv/tunnelstead-feed): V0 (downgrade check), V1 (good update) and V2 (signed
 but with a failing installer). Checks: tampered bundle refused, dashboard update V0 → V1 with a VPN server kept
 running, downgrade refused, manual rollback, and automatic rollback of a failing update. Leaves the server on V0.
 """
@@ -17,10 +17,10 @@ import urllib.parse
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from wireguard_e2e import Api, check, results, sh, temp_admin  # noqa: E402
 
-FEED = os.environ.get("VPNIX_E2E_FEED", "/srv/vpnix-feed")
-ENV = "/etc/vpnix-manager/vpnix-manager.env"
-UPDATE = "/opt/vpnix-manager/installer/update.sh"
-STATUS = "/var/lib/vpnix-manager/updates/status.json"
+FEED = os.environ.get("TUNNELSTEAD_E2E_FEED", "/srv/tunnelstead-feed")
+ENV = "/etc/tunnelstead/tunnelstead.env"
+UPDATE = "/opt/tunnelstead/installer/update.sh"
+STATUS = "/var/lib/tunnelstead/updates/status.json"
 
 
 def _bump(v, n):
@@ -29,7 +29,7 @@ def _bump(v, n):
 
 
 # Versions follow the installed one: V0 installed, V1 good update, V2 signed but with a failing installer.
-V0 = os.environ.get("VPNIX_E2E_BASE", "0.1.0")
+V0 = os.environ.get("TUNNELSTEAD_E2E_BASE", "0.1.0")
 V1, V2 = _bump(V0, 1), _bump(V0, 2)
 
 
@@ -50,7 +50,7 @@ def status():
 
 def updater_busy():
     out = subprocess.run(["systemctl", "list-units", "--no-legend", "--state=activating,active,reloading",
-                          "vpnix-manager-updater@*"], capture_output=True, text=True).stdout
+                          "tunnelstead-updater@*"], capture_output=True, text=True).stdout
     return bool(out.strip())
 
 
@@ -80,11 +80,11 @@ def login(admin, pw):
 
 
 def set_feed(on: bool):
-    lines = [x for x in open(ENV).read().splitlines() if not x.startswith("VPNIX_UPDATE_FEED_DIR=")]
+    lines = [x for x in open(ENV).read().splitlines() if not x.startswith("TUNNELSTEAD_UPDATE_FEED_DIR=")]
     if on:
-        lines.append(f"VPNIX_UPDATE_FEED_DIR={FEED}")
+        lines.append(f"TUNNELSTEAD_UPDATE_FEED_DIR={FEED}")
     open(ENV, "w").write("\n".join(lines) + "\n")
-    sh("systemctl", "restart", "vpnix-manager-api")
+    sh("systemctl", "restart", "tunnelstead-api")
     time.sleep(3)
 
 
@@ -109,14 +109,14 @@ def main():
         api.req("POST", "/api/clients", {"instance_id": inst["id"], "name": f"laptop-{tag}"})
 
         # 1. tampered bundle (valid signature file, modified content) is refused
-        tdir = "/root/vpnix-tampered"
+        tdir = "/root/tunnelstead-tampered"
         shutil.rmtree(tdir, ignore_errors=True)
         os.makedirs(tdir)
-        data = bytearray(open(f"{FEED}/vpnix-manager-{V1}.tar.gz", "rb").read())
+        data = bytearray(open(f"{FEED}/tunnelstead-{V1}.tar.gz", "rb").read())
         data[len(data) // 2] ^= 0xFF
-        open(f"{tdir}/vpnix-manager-{V1}.tar.gz", "wb").write(bytes(data))
-        shutil.copy(f"{FEED}/vpnix-manager-{V1}.tar.gz.sig", tdir)
-        out = subprocess.run([UPDATE, f"{tdir}/vpnix-manager-{V1}.tar.gz"], capture_output=True, text=True, timeout=300).stdout
+        open(f"{tdir}/tunnelstead-{V1}.tar.gz", "wb").write(bytes(data))
+        shutil.copy(f"{FEED}/tunnelstead-{V1}.tar.gz.sig", tdir)
+        out = subprocess.run([UPDATE, f"{tdir}/tunnelstead-{V1}.tar.gz"], capture_output=True, text=True, timeout=300).stdout
         check("tampered bundle refused", "signature check failed" in out and version() == V0, out.strip().splitlines()[-1] if out.strip() else "")
         shutil.rmtree(tdir)
 
@@ -136,12 +136,12 @@ def main():
         api = login(admin, pw)
         i2 = next((i for i in api.req("GET", "/api/instances")[1] if i["id"] == inst["id"]), None)
         check("data kept (server and client)", i2 and i2["clients_total"] == 1)
-        check("snapshot taken (root-only)", os.path.isdir("/opt/vpnix-manager.prev") and
-              oct(os.stat("/var/backups/vpnix-manager").st_mode & 0o777) == "0o700")
+        check("snapshot taken (root-only)", os.path.isdir("/opt/tunnelstead.prev") and
+              oct(os.stat("/var/backups/tunnelstead").st_mode & 0o777) == "0o700")
         check("no password in the update log", "PASSWORD" not in json.dumps(status()).upper())
 
         # 3. downgrade refused (signed, but older)
-        out = subprocess.run([UPDATE, f"{FEED}/vpnix-manager-{V0}.tar.gz"], capture_output=True, text=True, timeout=300).stdout
+        out = subprocess.run([UPDATE, f"{FEED}/tunnelstead-{V0}.tar.gz"], capture_output=True, text=True, timeout=300).stdout
         check("downgrade refused", "not newer" in out and version() == V1)
         s, _ = api.req("POST", f"/api/updates/{V0}/download")
         check("dashboard refuses the downgrade too", s == 422)
@@ -157,7 +157,7 @@ def main():
         check("VPN server running after rollback", wg_running(inst["iface"]))
 
         # 5. a signed update whose installer fails is undone automatically
-        out = subprocess.run([UPDATE, f"{FEED}/vpnix-manager-{V2}.tar.gz"], capture_output=True, text=True, timeout=900).stdout
+        out = subprocess.run([UPDATE, f"{FEED}/tunnelstead-{V2}.tar.gz"], capture_output=True, text=True, timeout=900).stdout
         st = status()
         check("failing update rolled back automatically", st.get("state") == "rolled_back" and not st.get("manual")
               and version() == V0, f"{st.get('state')} {st.get('error', '')}")
