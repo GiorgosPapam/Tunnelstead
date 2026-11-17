@@ -70,7 +70,7 @@ def service_logs(unit: str = Query("all", max_length=40), priority: str = Query(
                  hours: int = Query(24, ge=1, le=720), lines: int = Query(300, ge=1, le=2000),
                  q: str | None = Query(None, max_length=64), _: User = Depends(require("audit.view")),
                  db: DB = Depends(get_db), helper=Depends(get_helper)):
-    units = ["vpnix-create-api", "vpnix-create-helper", "caddy"]
+    units = ["vpnix-manager-api", "vpnix-manager-helper", "caddy"]
     for i in db.scalars(select(VpnInstance)):
         units.append(f"wg-quick@{i.iface}" if i.protocol == "wireguard" else f"openvpn-server@{i.iface}")
     chosen = units if unit == "all" else [unit]
@@ -169,7 +169,7 @@ async def upload_backup(request: Request, user: User = Depends(require("system.m
         if len(data) > backup.MAX_SIZE:
             raise HTTPException(413, "Backup file is too large")
     if not bytes(data[:8]) == backup.MAGIC:
-        raise HTTPException(422, "This is not a VPNix Create backup file")
+        raise HTTPException(422, "This is not a VPNix Manager backup file")
     name = _berr(lambda: backup.unique_name("uploaded"))
     fd = os.open(backup.backup_dir() / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(fd, "wb") as f:
@@ -195,10 +195,10 @@ def restore_backup(name: str, body: RestoreIn, request: Request, user: User = De
         raise HTTPException(422, "Type the backup name to confirm the restore")
     info = _berr(lambda: backup.preview(path, body.passphrase))
     if not info["compatible"]:
-        raise HTTPException(409, "This backup was made by a newer VPNix Create version. Update first, then restore.")
+        raise HTTPException(409, "This backup was made by a newer VPNix Manager version. Update first, then restore.")
     if not info["same_secret_key"]:
         raise HTTPException(409, "This backup comes from another server. Restore it there with: "
-                                 "sudo /opt/vpnix-create/installer/restore.sh FILE")
+                                 "sudo /opt/vpnix-manager/installer/restore.sh FILE")
     _, raw = backup.open_backup(path, body.passphrase)
     previous = [(i.protocol, i.iface) for i in db.scalars(select(VpnInstance))]
     safety = _berr(lambda: backup.create(body.passphrase, "pre-restore"))
@@ -275,5 +275,5 @@ def test_notification(user: User = Depends(require("system.manage")), db: DB = D
     cfg = notify.get_config(db)
     if not (cfg["webhook_url"] or cfg["email"].get("host")):
         raise HTTPException(422, "Configure a webhook or e-mail first")
-    errors = notify.deliver(cfg, "Test notification", f"Notifications from VPNix Create work. Sent by {user.username}.")
+    errors = notify.deliver(cfg, "Test notification", f"Notifications from VPNix Manager work. Sent by {user.username}.")
     return {"ok": not errors, "errors": errors}

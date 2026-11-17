@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Create an encrypted VPNix Create backup now.
+# Create an encrypted VPNix Manager backup now.
 # Usage: sudo backup.sh [--copy-to DIR]
 # The passphrase is asked for (or taken from VPNIX_BACKUP_PASSPHRASE). Without it the backup cannot be restored.
 set -Eeuo pipefail
@@ -12,7 +12,7 @@ while [[ $# -gt 0 ]]; do
     *) echo "Unknown option: $1" >&2; exit 2 ;;
   esac
 done
-out="$(vpnix-create-cli backup)"
+out="$(vpnix-manager-cli backup)"
 echo "$out"
 if [[ -n "$COPY" ]]; then
   f="$(sed -n 's/^Backup written: \(.*\) (.*$/\1/p' <<<"$out")"

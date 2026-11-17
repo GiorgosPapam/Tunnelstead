@@ -2,8 +2,8 @@
 from datetime import UTC, datetime
 
 import pytest
-from vpnix_create import backup, collector, notify
-from vpnix_create.models import HostMetric, InstanceMetric, Role, Setting, VpnInstance
+from vpnix_manager import backup, collector, notify
+from vpnix_manager.models import HostMetric, InstanceMetric, Role, Setting, VpnInstance
 
 from tests.conftest import PW, WG1, login, make_user
 
@@ -144,7 +144,7 @@ def test_service_logs(app, db, helper):
     c.post("/api/instances", json=WG1)
     r = c.get("/api/logs/services", params={"priority": "error", "q": "fail"}).json()
     assert "wg-quick@wg1" in r["units"] and [e["message"] for e in r["entries"]] == ["Failed to start"]
-    assert helper.journal_args["priority"] == "error" and "vpnix-create-api" in helper.journal_args["units"]
+    assert helper.journal_args["priority"] == "error" and "vpnix-manager-api" in helper.journal_args["units"]
     assert c.get("/api/logs/services", params={"unit": "sshd"}).status_code == 422
     make_user(db, "viewer", role=Role.VIEWER)
     assert login(app, "viewer").get("/api/logs/services").status_code == 403
@@ -188,7 +188,7 @@ def test_lockout_sends_one_alert(app, db, helper, monkeypatch):
     assert len(sent) == 1 and "alice" in sent[0]
 
 
-@pytest.mark.parametrize("bad", [["sshd"], ["wg-quick@eth0"], "vpnix-create-api", [], ["caddy; rm -rf /"]])
+@pytest.mark.parametrize("bad", [["sshd"], ["wg-quick@eth0"], "vpnix-manager-api", [], ["caddy; rm -rf /"]])
 def test_helper_journal_rejects_bad_units(bad):
     from tests.test_helper import helper as H
     with pytest.raises(H.Invalid):
@@ -220,3 +220,27 @@ def test_webhook_refuses_local_targets(url):
 def test_webhook_errors_are_reported_not_raised(monkeypatch):
     errs = notify.deliver({"webhook_url": "https://127.0.0.1/hook", "email": {}}, "t", "x")
     assert errs and "not allowed" in errs[0]
+
+
+def test_restores_backups_made_under_the_old_name(app, db, helper):
+    """Backups made by 1.x (VPNix Create) must still restore after the rename."""
+    import io
+    import json
+    import os
+    import tarfile
+
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    c = _admin(app, db)
+    b = c.post("/api/backups", json={"passphrase": PASS}).json()
+    p = backup.backup_dir() / b["name"]
+    manifest, raw = backup.open_backup(p, PASS)
+    manifest["app"] = "vpnix-create"
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        for name, data in (("manifest.json", json.dumps(manifest).encode()), ("vpnix.db", raw)):
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+    salt, nonce = os.urandom(16), os.urandom(12)
+    p.write_bytes(backup.MAGIC + salt + nonce + AESGCM(backup._key(PASS, salt)).encrypt(nonce, buf.getvalue(), backup.MAGIC))
+    assert c.post(f"/api/backups/{b['name']}/preview", json={"passphrase": PASS}).status_code == 200

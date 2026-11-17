@@ -2,10 +2,10 @@ import re
 
 import pyotp
 from fastapi.testclient import TestClient
-from vpnix_create import audit
-from vpnix_create.cli import main as cli
-from vpnix_create.deps import auth_limiter
-from vpnix_create.models import AuditEntry, Role, User
+from vpnix_manager import audit
+from vpnix_manager.cli import main as cli
+from vpnix_manager.deps import auth_limiter
+from vpnix_manager.models import AuditEntry, Role, User
 
 from tests.conftest import PW, login, make_user
 

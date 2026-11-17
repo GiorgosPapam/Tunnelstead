@@ -24,10 +24,10 @@ export default function Updates() {
   const st = o.status; const latest = o.check?.latest;
   return <>
     <h1 className="text-2xl font-semibold tracking-tight m-0">Updates</h1>
-    <p className="muted m-0 mt-1 mb-5">Installed version <strong>{o.current}</strong>. Only releases signed with the VPNix Create release key are installed; a snapshot is taken first and a failed update is undone automatically.</p>
+    <p className="muted m-0 mt-1 mb-5">Installed version <strong>{o.current}</strong>. Only releases signed with the VPNix Manager release key are installed; a snapshot is taken first and a failed update is undone automatically.</p>
     <Alert>{err}</Alert>
     {running && <div role="status" className="card p-4 mb-4 flex items-center gap-3"><Spinner label="" />
-      <div><strong>{restarting ? "Restarting VPNix Create…" : STEP[st.step ?? ""] ?? "Updating…"}</strong>
+      <div><strong>{restarting ? "Restarting VPNix Manager…" : STEP[st.step ?? ""] ?? "Updating…"}</strong>
         <div className="muted text-sm">VPN connections keep working. This page reconnects by itself.</div></div></div>}
     {!running && st.state === "success" && st.updated_at && <Alert kind="ok">Updated from {st.previous} to {st.version} {fmtAgo(st.updated_at)}.</Alert>}
     {!running && st.state === "rolled_back" && <Alert kind={st.manual ? "ok" : "error"}>{st.manual ? `Rolled back to ${st.running}.` : `The update to ${st.version} failed and was undone: ${st.error}. Version ${st.running} is running.`}</Alert>}
@@ -57,7 +57,7 @@ export default function Updates() {
       <Schedule o={o} onSaved={setO} />
     </div>
     {confirmRb && <Modal title={`Roll back to ${o.rollback_to}?`} onClose={() => setConfirmRb(false)}>
-      <p className="text-sm mt-0">VPNix Create and its database go back to the snapshot taken just before the update. Changes made since then (new clients, settings, users) are lost.</p>
+      <p className="text-sm mt-0">VPNix Manager and its database go back to the snapshot taken just before the update. Changes made since then (new clients, settings, users) are lost.</p>
       <div className="flex gap-2 justify-end"><button className="btn" onClick={() => setConfirmRb(false)}>Cancel</button>
         <button className="btn btn-danger" onClick={() => { setConfirmRb(false); act("rollback", () => api("/api/updates/rollback", { method: "POST" })); }}>Roll back</button></div></Modal>}
   </>;
@@ -70,7 +70,7 @@ function Schedule({ o, onSaved }: { o: O; onSaved: (x: O) => void }) {
   const days = [["any", "Every day"], ["mon", "Monday"], ["tue", "Tuesday"], ["wed", "Wednesday"], ["thu", "Thursday"], ["fri", "Friday"], ["sat", "Saturday"], ["sun", "Sunday"]];
   return <Card title="Update settings"><form onSubmit={submit}>
     <Alert>{err}</Alert>{ok && <Alert kind="ok">Saved.</Alert>}
-    <Field id="up-repo" label="GitHub repository" hint="owner/name of the official VPNix Create repository"><input id="up-repo" className="field" placeholder="owner/vpnix-create" value={s.repo} onChange={(e) => setS({ ...s, repo: e.target.value })} /></Field>
+    <Field id="up-repo" label="GitHub repository" hint="owner/name of the official VPNix Manager repository"><input id="up-repo" className="field" placeholder="owner/vpnix-manager" value={s.repo} onChange={(e) => setS({ ...s, repo: e.target.value })} /></Field>
     <fieldset className="border-0 p-0 m-0 mb-3"><legend className="text-sm font-semibold mb-1.5">When a new version is released</legend>
       {[["off", "Do nothing"], ["notify", "Tell me (dashboard and notifications)"], ["auto", "Install it automatically in the window below"]].map(([k, l]) =>
         <label key={k} className="flex gap-2 items-center text-sm py-0.5"><input type="radio" name="up-mode" checked={s.mode === k} onChange={() => setS({ ...s, mode: k })} />{l}</label>)}</fieldset>

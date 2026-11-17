@@ -1,9 +1,9 @@
-"""OpenVPN operations for vpnix-create-helper (root). Standard library only.
+"""OpenVPN operations for vpnix-manager-helper (root). Standard library only.
 
 OpenVPN configuration is line-based, so a newline or quote inside any value could inject directives
 (e.g. `script-security 2` + `up /bin/sh`). Every value is therefore validated against a strict pattern before
 anything is written, and every write happens only after all validation succeeded.
-Only instances whose config carries the VPNix Create marker are ever modified (ovpn0 ... ovpn999).
+Only instances whose config carries the VPNix Manager marker are ever modified (ovpn0 ... ovpn999).
 """
 import ipaddress
 import os
@@ -13,8 +13,8 @@ import socket
 import subprocess
 
 SERVER_DIR = "/etc/openvpn/server"
-RUN_DIR = "/run/vpnix-create"
-MARKER = "# Managed by VPNix Create - do not edit by hand"
+RUN_DIR = "/run/vpnix-manager"
+MARKER = "# Managed by VPNix Manager - do not edit by hand"
 IFACE = re.compile(r"^ovpn[0-9]{1,3}$")
 CN = re.compile(r"^c[0-9a-f]{24}$")
 PEM = {
@@ -117,7 +117,7 @@ def apply(iface, port, proto, network, network6, mtu, dns, ca, cert, key, tls_cr
             lines.append(f"ifconfig-ipv6-push {ip6}/{net6.prefixlen} {next(net6.hosts())}")
         ccd[cn] = "\n".join(lines) + "\n"
     if os.path.exists(_conf(iface)) and not managed(iface):
-        raise Invalid(f"{iface} exists and is not managed by VPNix Create; refusing to touch it")
+        raise Invalid(f"{iface} exists and is not managed by VPNix Manager; refusing to touch it")
     # ---- everything validated: now write
     base = os.path.join(SERVER_DIR, iface)
     os.makedirs(os.path.join(base, "ccd"), mode=0o755, exist_ok=True)
@@ -154,7 +154,7 @@ def service(iface, action):
     if action not in ("start", "stop", "restart", "enable", "disable", "status"):
         raise Invalid("bad action")
     if not managed(iface):
-        raise Invalid(f"{iface} is not managed by VPNix Create")
+        raise Invalid(f"{iface} is not managed by VPNix Manager")
     unit = f"openvpn-server@{iface}.service"
     if action == "status":
         return {"active": _systemctl("is-active", unit, check=False).stdout.strip() == "active",
@@ -182,7 +182,7 @@ def delete(iface):
     if not managed(iface):
         if not os.path.exists(_conf(iface)):
             return {"ok": True, "note": "already gone"}
-        raise Invalid(f"{iface} is not managed by VPNix Create")
+        raise Invalid(f"{iface} is not managed by VPNix Manager")
     _systemctl("disable", "--now", f"openvpn-server@{iface}.service", check=False)
     os.unlink(_conf(iface))
     shutil.rmtree(os.path.join(SERVER_DIR, iface), ignore_errors=True)

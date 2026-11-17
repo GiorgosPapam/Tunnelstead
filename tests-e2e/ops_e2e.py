@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from wireguard_e2e import Api, check, results, sh, temp_admin  # noqa: E402
 
 PASS = "e2e-" + secrets.token_urlsafe(16)
-BACKUPS = "/var/lib/vpnix-create/backups"
+BACKUPS = "/var/lib/vpnix-manager/backups"
 
 
 def wait(pred, timeout=90, every=5):
@@ -58,7 +58,7 @@ def main():
             check("server availability is 100 %", next(i for i in m["instances"] if i["name"] == inst["name"])["availability"] == 100.0)
 
         # ---- service logs from journald through the helper
-        s, logs = api.req("GET", "/api/logs/services?unit=vpnix-create-api&hours=24&lines=50")
+        s, logs = api.req("GET", "/api/logs/services?unit=vpnix-manager-api&hours=24&lines=50")
         check("service logs read from journald", s == 200 and len(logs["entries"]) > 0, f"{len(logs.get('entries', []))} lines")
         check("per-server unit listed", f"wg-quick@{iface}" in logs["units"])
         s, _ = api.req("GET", "/api/logs/services?unit=ssh")
@@ -97,13 +97,13 @@ def main():
         # ---- restore.sh (command line, API stopped)
         api.req("DELETE", f"/api/instances/{inst['id']}?confirm={urllib.parse.quote(inst['name'])}")
         env = {**os.environ, "VPNIX_BACKUP_PASSPHRASE": PASS}
-        p = subprocess.run(["/opt/vpnix-create/installer/restore.sh", os.path.join(BACKUPS, b["name"]), "--yes"],
+        p = subprocess.run(["/opt/vpnix-manager/installer/restore.sh", os.path.join(BACKUPS, b["name"]), "--yes"],
                            capture_output=True, text=True, env=env, timeout=300)
         check("restore.sh finished", p.returncode == 0, (p.stdout + p.stderr).strip().splitlines()[-1] if (p.stdout + p.stderr).strip() else "")
         check("server live again after restore.sh", "listening port" in sh("wg", "show", iface, check=False).stdout)
-        check("API healthy after restore.sh", sh("systemctl", "is-active", "vpnix-create-api", check=False).stdout.strip() == "active")
+        check("API healthy after restore.sh", sh("systemctl", "is-active", "vpnix-manager-api", check=False).stdout.strip() == "active")
         check("state files still owned by the service user",
-              all(os.stat(f).st_uid == os.stat(BACKUPS).st_uid for f in glob.glob("/var/lib/vpnix-create/*")))
+              all(os.stat(f).st_uid == os.stat(BACKUPS).st_uid for f in glob.glob("/var/lib/vpnix-manager/*")))
         api = Api().login(admin, pw)
         inst = next((i for i in api.req("GET", "/api/instances")[1] if i["name"] == inst["name"]), inst)
     finally:

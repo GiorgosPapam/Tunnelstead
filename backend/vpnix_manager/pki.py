@@ -20,7 +20,7 @@ CA_DAYS, SERVER_DAYS, CLIENT_DAYS = 3650, 1825, 825
 
 def _ca_key(pem: str) -> ec.EllipticCurvePrivateKey:
     k = serialization.load_pem_private_key(pem.encode(), None)
-    if not isinstance(k, ec.EllipticCurvePrivateKey):  # every CA VPNix Create makes is ECDSA P-256
+    if not isinstance(k, ec.EllipticCurvePrivateKey):  # every CA VPNix Manager makes is ECDSA P-256
         raise ValueError("unexpected CA key type")
     return k
 
@@ -45,7 +45,7 @@ def _ku(ca: bool):
 
 def new_ca(label: str) -> tuple[str, str]:
     k = ec.generate_private_key(ec.SECP256R1())
-    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, f"VPNix Create CA {label}")])
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, f"VPNix Manager CA {label}")])
     c = (x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(k.public_key())
          .serial_number(x509.random_serial_number()).not_valid_before(_now() - dt.timedelta(minutes=5))
          .not_valid_after(_now() + dt.timedelta(days=CA_DAYS))

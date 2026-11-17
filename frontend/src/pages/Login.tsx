@@ -37,7 +37,7 @@ export default function Login({ onDone }: { onDone: () => void }) {
         required autoFocus pattern="\d{6}|[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}" value={code} onChange={(e) => setCode(e.target.value)} /></Field>}
       <button className="btn btn-primary w-full mt-2" disabled={busy}>{busy ? "Checking…" : mfa ? "Verify" : "Sign in"}</button>
       <p className="muted text-xs text-center mt-5 mb-0">Forgot your password? An administrator can reset it, or run<br />
-        <code>vpnix-create-cli reset-admin</code> on the server.</p>
+        <code>vpnix-manager-cli reset-admin</code> on the server.</p>
     </form>
   </main>;
 }

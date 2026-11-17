@@ -1,4 +1,4 @@
-"""Encrypted, self-verifying backups of the whole VPNix Create state.
+"""Encrypted, self-verifying backups of the whole VPNix Manager state.
 
 File format (.vbk):  b"VPNIXBK1" | salt (16) | nonce (12) | AES-256-GCM( tar.gz{manifest.json, vpnix.db} )
 The key comes from the backup passphrase via Argon2id, so a backup can be restored on a new server, and nothing in
@@ -93,7 +93,7 @@ def unique_name(kind: str) -> str:
 def create(passphrase: str, kind: str = "manual") -> dict:
     raw = _snapshot()
     counts = _counts(raw)
-    manifest = {"format": FORMAT, "app": "vpnix-create", "app_version": __version__, "kind": kind,
+    manifest = {"format": FORMAT, "app": "vpnix-manager", "app_version": __version__, "kind": kind,
                 "created_at": datetime.now(UTC).isoformat(), "db_sha256": hashlib.sha256(raw).hexdigest(),
                 "contents": counts, "secret_key": get_settings().secret_key}
     buf = io.BytesIO()
@@ -114,7 +114,7 @@ def create(passphrase: str, kind: str = "manual") -> dict:
 def open_backup(path: Path, passphrase: str) -> tuple[dict, bytes]:
     blob = path.read_bytes()
     if not blob.startswith(MAGIC) or len(blob) < 8 + 16 + 12 + 16:
-        raise BackupError("This is not a VPNix Create backup file")
+        raise BackupError("This is not a VPNix Manager backup file")
     salt, nonce, ct = blob[8:24], blob[24:36], blob[36:]
     try:
         tgz = AESGCM(_key(passphrase, salt)).decrypt(nonce, ct, MAGIC)
@@ -126,7 +126,7 @@ def open_backup(path: Path, passphrase: str) -> tuple[dict, bytes]:
             raise BackupError("Unexpected backup contents")
         manifest = json.loads(tar.extractfile("manifest.json").read())
         raw = tar.extractfile("vpnix.db").read()
-    if manifest.get("format") != FORMAT or manifest.get("app") != "vpnix-create":
+    if manifest.get("format") != FORMAT or manifest.get("app") not in ("vpnix-manager", "vpnix-create"):  # 1.x was called VPNix Create
         raise BackupError("Unsupported backup format")
     if hashlib.sha256(raw).hexdigest() != manifest["db_sha256"]:
         raise BackupError("Integrity check failed: the database inside the backup is damaged")

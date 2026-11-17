@@ -32,7 +32,7 @@ test("Updates: automatic install settings", async ({ page }) => {
   await page.getByLabel("GitHub repository").fill("not a repo");
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByText(/repo/i).locator("..").getByRole("alert").or(page.getByRole("alert"))).toBeVisible();
-  await page.getByLabel("GitHub repository").fill("example/vpnix-create");
+  await page.getByLabel("GitHub repository").fill("example/vpnix-manager");
   await page.getByRole("radio", { name: /Install it automatically/ }).check();
   await page.getByLabel("Day").selectOption("sun");
   await page.getByLabel("Hour (UTC)").selectOption("3");

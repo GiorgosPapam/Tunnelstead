@@ -100,10 +100,10 @@ function RestoreBackup({ b, onClose }: { b: B; onClose: () => void }) {
     </form> : <>
       <Alert kind="ok">Decrypted and verified: the file is complete and unmodified.</Alert>
       <div className="card p-3 text-sm mb-3"><div className="muted text-xs font-semibold mb-1">THIS BACKUP CONTAINS</div>
-        <div>Made {fmtDate(pv.created_at)} by VPNix Create {pv.app_version}</div>
+        <div>Made {fmtDate(pv.created_at)} by VPNix Manager {pv.app_version}</div>
         {Object.entries(labels).map(([k, l]) => <div key={k}>{l}: <strong>{pv.contents[k]}</strong></div>)}</div>
-      {!pv.compatible ? <Alert>This backup is from a newer version of VPNix Create. Update this server first.</Alert>
-        : !pv.same_secret_key ? <Alert kind="info">This backup comes from another server. Restore it on the command line: <code>sudo /opt/vpnix-create/installer/restore.sh FILE</code></Alert>
+      {!pv.compatible ? <Alert>This backup is from a newer version of VPNix Manager. Update this server first.</Alert>
+        : !pv.same_secret_key ? <Alert kind="info">This backup comes from another server. Restore it on the command line: <code>sudo /opt/vpnix-manager/installer/restore.sh FILE</code></Alert>
         : <>
           <Alert kind="info">All current data is replaced by the backup. A safety copy of the current data is made first. VPN servers and the firewall are redeployed to match, and everyone must sign in again.</Alert>
           <Field id="rb-c" label={`Type the backup name to confirm`} hint={b.name}><input id="rb-c" className="field" value={confirmName} onChange={(e) => setConfirm(e.target.value)} /></Field>

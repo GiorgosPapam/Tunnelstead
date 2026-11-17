@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Real-host end-to-end test for the WireGuard engine. Run as root on an installed server:
 
-    sudo vpnix-create-e2e   (or: python3 tests-e2e/wireguard_e2e.py with the service env loaded)
+    sudo vpnix-manager-e2e   (or: python3 tests-e2e/wireguard_e2e.py with the service env loaded)
 
 Uses a temporary admin and throwaway instances/clients, a WireGuard client in a network namespace, and removes
 everything afterwards. Nothing pre-existing on the host is modified.
@@ -67,10 +67,10 @@ class Api:
 
 
 def temp_admin(create, name, pw=""):
-    sys.path.insert(0, "/opt/vpnix-create/backend")
-    from vpnix_create.db import get_db
-    from vpnix_create.models import Role, User
-    from vpnix_create.security import hash_password
+    sys.path.insert(0, "/opt/vpnix-manager/backend")
+    from vpnix_manager.db import get_db
+    from vpnix_manager.models import Role, User
+    from vpnix_manager.security import hash_password
     db = next(get_db())
     if create:
         db.add(User(username=name, role=Role.ADMIN, password_hash=hash_password(pw)))
@@ -82,9 +82,9 @@ def temp_admin(create, name, pw=""):
 
 
 def collect():
-    from vpnix_create import collector
-    from vpnix_create.db import get_db
-    from vpnix_create.helper_client import Helper
+    from vpnix_manager import collector
+    from vpnix_manager.db import get_db
+    from vpnix_manager.helper_client import Helper
     db = next(get_db())
     try:
         return collector.collect(db, Helper())
@@ -135,7 +135,7 @@ def main():
     created, foreign = [], "/etc/wireguard/wg97.conf"
     blocker = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
-        # A foreign WireGuard config (not made by VPNix Create) must be detected and never touched.
+        # A foreign WireGuard config (not made by VPNix Manager) must be detected and never touched.
         os.makedirs("/etc/wireguard", exist_ok=True)
         with open(foreign, "w") as f:
             f.write("[Interface]\nPrivateKey = foreign\n")
@@ -145,7 +145,7 @@ def main():
                 "egress_iface": rec["egress_iface"], "ipv4_cidr": rec["ipv4_cidr"], "ipv6_cidr": rec["ipv6_cidr"],
                 "dns": ["1.1.1.1"], "routing_mode": "full", "nat": True}
         s, b = api.req("POST", "/api/instances/validate", {**base, "iface": "wg97"})
-        check("validation refuses the foreign interface", "not created by VPNix Create" in b["errors"].get("iface", ""))
+        check("validation refuses the foreign interface", "not created by VPNix Manager" in b["errors"].get("iface", ""))
         blocker.bind(("0.0.0.0", 51999))  # a real port held by another program
         s, b = api.req("GET", "/api/instances/port-check?port=51999&transport=udp")
         check("port check detects a real port in use", b["free"] is False, b["message"])
@@ -197,7 +197,7 @@ def main():
             api.req("POST", f"/api/clients/{cl['id']}/revoke")
             check("revoked client removed", cl["public_key"] not in sh("wg", "show", a["iface"], "peers").stdout)
             check("revoked client cannot reach server", not ping(gw4, 2))
-            rules = sh("nft", "list", "table", "inet", "vpnix_create").stdout
+            rules = sh("nft", "list", "table", "inet", "vpnix_manager").stdout
             check("firewall: own table with both ports and NAT", f"udp dport {a['listen_port']}" in rules and
                   f"udp dport {bb['listen_port']}" in rules and "masquerade" in rules)
         finally:

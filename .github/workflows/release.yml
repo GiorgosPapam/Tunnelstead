@@ -18,7 +18,7 @@ jobs:
       - name: Download assets
         env: { GH_TOKEN: "${{ github.token }}", TAG: "${{ github.event.release.tag_name }}" }
         run: |
-          mkdir dl && gh release download "$TAG" --dir dl --pattern 'vpnix-create-*'
+          mkdir dl && gh release download "$TAG" --dir dl --pattern 'vpnix-manager-*'
           ls -l dl
       - name: Verify signature and version
         env: { TAG: "${{ github.event.release.tag_name }}" }
@@ -28,16 +28,16 @@ jobs:
           python - "$V" <<'PY'
           import base64, hashlib, io, sys, tarfile
           from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
-          v = sys.argv[1]; b = open(f"dl/vpnix-create-{v}.tar.gz", "rb").read()
-          sig = base64.b64decode(open(f"dl/vpnix-create-{v}.tar.gz.sig").read().strip())
+          v = sys.argv[1]; b = open(f"dl/vpnix-manager-{v}.tar.gz", "rb").read()
+          sig = base64.b64decode(open(f"dl/vpnix-manager-{v}.tar.gz.sig").read().strip())
           pub = Ed25519PublicKey.from_public_bytes(base64.b64decode(open("installer/release-key.pub").read().strip()))
-          pub.verify(sig, f"vpnix-create-release:{v}:{hashlib.sha256(b).hexdigest()}".encode())
+          pub.verify(sig, f"vpnix-manager-release:{v}:{hashlib.sha256(b).hexdigest()}".encode())
           with tarfile.open(fileobj=io.BytesIO(b)) as t:
-              assert t.extractfile(f"vpnix-create-{v}/VERSION").read().decode().strip() == v
-          print(f"OK: vpnix-create-{v} is signed by the release key")
+              assert t.extractfile(f"vpnix-manager-{v}/VERSION").read().decode().strip() == v
+          print(f"OK: vpnix-manager-{v} is signed by the release key")
           PY
       - name: Attach SHA256SUMS
         env: { GH_TOKEN: "${{ github.token }}", TAG: "${{ github.event.release.tag_name }}" }
         run: |
-          (cd dl && sha256sum vpnix-create-* > SHA256SUMS)
+          (cd dl && sha256sum vpnix-manager-* > SHA256SUMS)
           gh release upload "$TAG" dl/SHA256SUMS --clobber

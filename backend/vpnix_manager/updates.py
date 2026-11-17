@@ -1,7 +1,7 @@
 """Update checks and downloads (unprivileged). Installing is done by the root updater, which verifies again.
 
 Releases come from GitHub (`owner/repo`, set in the Updates page or VPNIX_UPDATE_REPO). A release is used only if it
-has `vpnix-create-X.Y.Z.tar.gz` and `vpnix-create-X.Y.Z.tar.gz.sig` assets. For offline installs and tests a local
+has `vpnix-manager-X.Y.Z.tar.gz` and `vpnix-manager-X.Y.Z.tar.gz.sig` assets. For offline installs and tests a local
 directory with the same files can be used instead (VPNIX_UPDATE_FEED_DIR).
 """
 import base64
@@ -58,9 +58,9 @@ def public_key() -> Ed25519PublicKey:
 def verify(bundle: Path, sig: Path, version: str) -> str:
     digest = hashlib.sha256(bundle.read_bytes()).hexdigest()
     try:
-        public_key().verify(base64.b64decode(sig.read_text().strip()), f"vpnix-create-release:{version}:{digest}".encode())
+        public_key().verify(base64.b64decode(sig.read_text().strip()), f"vpnix-manager-release:{version}:{digest}".encode())
     except (InvalidSignature, ValueError):
-        raise UpdateError("Signature check failed: this release was not signed by the VPNix Create release key") from None
+        raise UpdateError("Signature check failed: this release was not signed by the VPNix Manager release key") from None
     return digest
 
 
@@ -87,7 +87,7 @@ def save_settings(db: DB, **kw) -> dict:
 def _get(url: str, limit: int = 2 * 1024 * 1024, accept: str = "application/vnd.github+json") -> bytes:
     if not url.startswith("https://"):
         raise UpdateError("Only https downloads are allowed")
-    req = urllib.request.Request(url, headers={"Accept": accept, "User-Agent": "VPNix-Create-Updater"})  # noqa: S310
+    req = urllib.request.Request(url, headers={"Accept": accept, "User-Agent": "VPNix-Manager-Updater"})  # noqa: S310
     with urllib.request.urlopen(req, timeout=30) as r:  # noqa: S310 - https only
         data = r.read(limit + 1)
     if len(data) > limit:
@@ -99,8 +99,8 @@ def _releases(repo: str) -> list[dict]:
     feed = os.environ.get("VPNIX_UPDATE_FEED_DIR")
     out = []
     if feed:
-        for p in Path(feed).glob("vpnix-create-*.tar.gz"):
-            v = p.name.removeprefix("vpnix-create-").removesuffix(".tar.gz")
+        for p in Path(feed).glob("vpnix-manager-*.tar.gz"):
+            v = p.name.removeprefix("vpnix-manager-").removesuffix(".tar.gz")
             notes = Path(feed, f"{v}.md")
             if VERSION_RE.match(v) and Path(str(p) + ".sig").exists():
                 out.append({"version": v, "notes": notes.read_text() if notes.exists() else "", "published_at": None,
@@ -119,7 +119,7 @@ def _releases(repo: str) -> list[dict]:
         if r.get("draft") or r.get("prerelease") or not VERSION_RE.match(v):
             continue
         assets = {a["name"]: a["browser_download_url"] for a in r.get("assets", [])}
-        b = f"vpnix-create-{v}.tar.gz"
+        b = f"vpnix-manager-{v}.tar.gz"
         if b in assets and b + ".sig" in assets:
             out.append({"version": v, "notes": (r.get("body") or "")[:20000], "published_at": r.get("published_at"),
                         "bundle": assets[b], "sig": assets[b + ".sig"], "page": r.get("html_url")})
@@ -152,7 +152,7 @@ def download(db: DB, version: str) -> dict:
     rel = next((r for r in _releases(settings(db)["repo"]) if r["version"] == version), None)
     if not rel:
         raise UpdateError(f"Release {version} was not found")
-    d, name = downloads(), f"vpnix-create-{version}.tar.gz"
+    d, name = downloads(), f"vpnix-manager-{version}.tar.gz"
     for src, dst in ((rel["bundle"], name), (rel["sig"], name + ".sig")):
         data = Path(src).read_bytes() if not src.startswith("https://") else _get(src, MAX_BUNDLE, "application/octet-stream")
         tmp = d / (dst + ".part")
@@ -168,7 +168,7 @@ def download(db: DB, version: str) -> dict:
 
 
 def downloaded(version: str) -> bool:
-    d, name = downloads(), f"vpnix-create-{version}.tar.gz"
+    d, name = downloads(), f"vpnix-manager-{version}.tar.gz"
     if not ((d / name).exists() and (d / (name + ".sig")).exists()):
         return False
     try:
@@ -215,7 +215,7 @@ def scheduled(db: DB, helper, now=None) -> str | None:
     latest = info.get("latest")
     if not latest:
         return None
-    notify.notify(db, "update_available", f"VPNix Create {latest['version']} is available (installed: {__version__}).",
+    notify.notify(db, "update_available", f"VPNix Manager {latest['version']} is available (installed: {__version__}).",
                   key=latest["version"])
     now = now or datetime.now(UTC)
     in_window = now.hour == int(cfg["hour"]) and cfg["day"] in ("any", DAYS[now.weekday()])

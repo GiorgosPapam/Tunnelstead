@@ -186,7 +186,7 @@ def mfa_setup(u: User = Depends(current_user), db: DB = Depends(get_db)):
     u.mfa_secret_enc = encrypt(secret, f"mfa:{u.id}")
     db.commit()
     return {"secret": secret, "otpauth_uri": pyotp.TOTP(secret).provisioning_uri(name=u.username,
-                                                                                 issuer_name="VPNix Create")}
+                                                                                 issuer_name="VPNix Manager")}
 
 
 @router.post("/mfa/enable")

@@ -97,7 +97,7 @@ def validate(db: DB, helper, data: dict, exclude_id: int | None = None) -> Check
     elif db.scalar(select(VpnInstance).where(VpnInstance.iface == iface, VpnInstance.id != (exclude_id or 0))):
         c.errors["iface"] = "Another VPN instance uses this interface"
     elif not exclude_id and any(w["name"] == iface for w in facts["wg"]):
-        c.errors["iface"] = f"{iface} already exists on this server (not created by VPNix Create); it will not be touched"
+        c.errors["iface"] = f"{iface} already exists on this server (not created by VPNix Manager); it will not be touched"
     elif not exclude_id and any(i["name"] == iface for i in facts["interfaces"]["interfaces"]):
         c.errors["iface"] = f"A network interface named {iface} already exists"
     others = [i for i in db.scalars(select(VpnInstance)) if i.id != exclude_id]

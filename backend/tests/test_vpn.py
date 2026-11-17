@@ -1,8 +1,8 @@
 import time
 
-from vpnix_create import collector
-from vpnix_create.engines.wireguard import keypair, public_from_private
-from vpnix_create.models import Role
+from vpnix_manager import collector
+from vpnix_manager.engines.wireguard import keypair, public_from_private
+from vpnix_manager.models import Role
 
 from tests.conftest import WG1, login, make_user
 
@@ -25,7 +25,7 @@ def test_validation_catches_every_conflict(app, db, helper):
     bad = c.post("/api/instances/validate", json={**WG1, "iface": "wg0", "listen_port": 51820, "ipv4_cidr": "10.0.0.0/24",
                                                   "ipv6_cidr": "2a00:1450::/64", "endpoint_host": "not a host!"}).json()
     assert not bad["ok"]
-    assert "not created by VPNix Create" in bad["errors"]["iface"]
+    assert "not created by VPNix Manager" in bad["errors"]["iface"]
     assert "already in use" in bad["errors"]["listen_port"]
     assert "Overlaps 10.0.0.0/24" in bad["errors"]["ipv4_cidr"]
     assert "ULA" in bad["errors"]["ipv6_cidr"] and "endpoint_host" in bad["errors"]
@@ -114,7 +114,7 @@ def test_roles(app, db, helper):
 
 
 def test_stats_expiry_and_quota_enforced(app, db, helper):
-    from vpnix_create.models import Client
+    from vpnix_manager.models import Client
     c = _admin(app, db)
     iid = c.post("/api/instances", json=WG1).json()["id"]
     a = c.post("/api/clients", json={"instance_id": iid, "name": "quota", "quota_gb": 0.000001}).json()

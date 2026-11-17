@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""VPNix Create updater. Runs as root, only via vpnix-create-updater@<action>.service or update.sh.
+"""VPNix Manager updater. Runs as root, only via vpnix-manager-updater@<action>.service or update.sh.
 
     updater.py install-X.Y.Z   install the downloaded, signed bundle for version X.Y.Z
     updater.py rollback        restore the snapshot taken before the last update (code AND database)
 
 Safety rules:
   * The bundle is copied into a root-only directory first and verified there (the unprivileged API that downloaded
-    it cannot swap it afterwards). The Ed25519 signature must match /opt/vpnix-create/release-key.pub and covers the
+    it cannot swap it afterwards). The Ed25519 signature must match /opt/vpnix-manager/release-key.pub and covers the
     version and SHA-256, so an old signed bundle cannot be relabelled as new.
   * Only newer versions are installed (downgrade protection). Going back is only possible through `rollback`,
     which restores the exact snapshot (application + database) taken before the update.
-  * Before installing: snapshot of /opt/vpnix-create and an online copy of the database. After installing, the new
+  * Before installing: snapshot of /opt/vpnix-manager and an online copy of the database. After installing, the new
     version must answer its health check with the expected version, otherwise everything is rolled back automatically.
 """
 import base64
@@ -29,16 +29,16 @@ import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
 
-APP = Path(os.environ.get("VPNIX_APP_DIR", "/opt/vpnix-create"))
+APP = Path(os.environ.get("VPNIX_APP_DIR", "/opt/vpnix-manager"))
 PREV = Path(str(APP) + ".prev")
-STATE = Path(os.environ.get("VPNIX_STATE_DIR", "/var/lib/vpnix-create"))
+STATE = Path(os.environ.get("VPNIX_STATE_DIR", "/var/lib/vpnix-manager"))
 DOWNLOADS = STATE / "updates"
 STATUS = DOWNLOADS / "status.json"
-SAFE = Path(os.environ.get("VPNIX_UPDATE_SAFE_DIR", "/var/backups/vpnix-create"))  # root-only (0700)
+SAFE = Path(os.environ.get("VPNIX_UPDATE_SAFE_DIR", "/var/backups/vpnix-manager"))  # root-only (0700)
 DB = STATE / "vpnix.db"
 HEALTH = "http://127.0.0.1:8090/api/health"
 VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
-SVC_USER = "vpnix-create"
+SVC_USER = "vpnix-manager"
 _log: list[str] = []
 
 
@@ -93,7 +93,7 @@ def status(state: str, **kw) -> None:
 
 
 def message(version: str, sha256: str) -> bytes:
-    return f"vpnix-create-release:{version}:{sha256}".encode()
+    return f"vpnix-manager-release:{version}:{sha256}".encode()
 
 
 def verify(bundle: Path, sig: Path, version: str, pubkey: Path | None = None) -> str:
@@ -104,12 +104,12 @@ def verify(bundle: Path, sig: Path, version: str, pubkey: Path | None = None) ->
     try:
         pub.verify(base64.b64decode(sig.read_text().strip()), message(version, digest))
     except (InvalidSignature, ValueError):
-        raise UpdateError("signature check failed: this bundle was not signed by the VPNix Create release key") from None
+        raise UpdateError("signature check failed: this bundle was not signed by the VPNix Manager release key") from None
     return digest
 
 
 def safe_extract(bundle: Path, dest: Path, version: str) -> Path:
-    prefix = f"vpnix-create-{version}/"
+    prefix = f"vpnix-manager-{version}/"
     with tarfile.open(bundle, "r:gz") as tar:
         for m in tar.getmembers():
             name = m.name
@@ -170,7 +170,7 @@ def restore_snapshot() -> str:
     if not PREV.is_dir():
         raise UpdateError("no snapshot to roll back to")
     log(f"Rolling back to {meta['version']}")
-    sh("systemctl", "stop", "vpnix-create-api")
+    sh("systemctl", "stop", "vpnix-manager-api")
     sh("rsync", "-a", "--delete", f"{PREV}/", f"{APP}/")
     if (SAFE / "pre-update.db").exists():
         for suffix in ("-wal", "-shm"):
@@ -182,9 +182,9 @@ def restore_snapshot() -> str:
     for u in units.glob("*.service"):
         shutil.copy2(u, f"/etc/systemd/system/{u.name}")
     sh("systemctl", "daemon-reload")
-    sh("systemctl", "restart", "vpnix-create-helper", "vpnix-create-api")
+    sh("systemctl", "restart", "vpnix-manager-helper", "vpnix-manager-api")
     if not healthy(meta["version"]):
-        raise UpdateError("the restored version did not start; see journalctl -u vpnix-create-api")
+        raise UpdateError("the restored version did not start; see journalctl -u vpnix-manager-api")
     return meta["version"]
 
 
@@ -192,7 +192,7 @@ def install(version: str) -> None:
     current = installed_version()
     if vtuple(version) <= vtuple(current):
         raise UpdateError(f"{version} is not newer than the installed {current} (downgrades are refused; use rollback)")
-    name = f"vpnix-create-{version}.tar.gz"
+    name = f"vpnix-manager-{version}.tar.gz"
     with tempfile.TemporaryDirectory(prefix="vpnix-update-") as td:  # root-only (0700)
         work = Path(td)
         for f in (name, name + ".sig"):
@@ -226,7 +226,7 @@ def main(argv: list[str]) -> int:
         return 2
     import fcntl  # Linux only (the updater never runs elsewhere)
     action = argv[0]
-    lock = open("/run/vpnix-create-update.lock", "w")
+    lock = open("/run/vpnix-manager-update.lock", "w")
     try:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:

@@ -1,4 +1,4 @@
-"""vpnix-create-cli: installer-side operations. Never reachable over HTTP."""
+"""vpnix-manager-cli: installer-side operations. Never reachable over HTTP."""
 import argparse
 import base64
 import os
@@ -33,7 +33,7 @@ def _passphrase(confirm: bool) -> str:
     return pw
 
 
-ENV_FILE = "/etc/vpnix-create/vpnix-create.env"
+ENV_FILE = "/etc/vpnix-manager/vpnix-manager.env"
 
 
 def _set_secret_key(key: str) -> None:
@@ -49,7 +49,7 @@ def _set_secret_key(key: str) -> None:
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(prog="vpnix-create-cli")
+    ap = argparse.ArgumentParser(prog="vpnix-manager-cli")
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("gen-secret", help="print a new VPNIX_SECRET_KEY")
     sub.add_parser("migrate", help="apply database migrations (safe to re-run)")
@@ -84,7 +84,7 @@ def main(argv=None) -> int:
         from . import backup
         from .config import get_settings
         m, raw = backup.open_backup(Path(a.file), _passphrase(confirm=False))
-        print(f"Backup from {m['created_at']} (VPNix Create {m['app_version']}): {m['contents']}")
+        print(f"Backup from {m['created_at']} (VPNix Manager {m['app_version']}): {m['contents']}")
         if not a.yes and input("Replace ALL current data with this backup? Type 'restore': ").strip() != "restore":
             print("Cancelled; nothing changed.")
             return 1
@@ -98,7 +98,7 @@ def main(argv=None) -> int:
             print("Adopted the secret key from the backup.")
         engine.dispose()
         migrate(engine)
-        print("Restored. Start the API and run 'vpnix-create-cli resync'.")
+        print("Restored. Start the API and run 'vpnix-manager-cli resync'.")
         return 0
     if a.cmd == "resync":
         from .helper_client import Helper

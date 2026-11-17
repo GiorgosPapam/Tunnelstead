@@ -2,9 +2,9 @@
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from vpnix_create import models  # noqa: F401  (registers tables)
-from vpnix_create.config import get_settings
-from vpnix_create.db import Base
+from vpnix_manager import models  # noqa: F401  (registers tables)
+from vpnix_manager.config import get_settings
+from vpnix_manager.db import Base
 
 config = context.config
 if not config.get_main_option("sqlalchemy.url"):

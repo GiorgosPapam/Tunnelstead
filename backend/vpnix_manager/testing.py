@@ -28,7 +28,7 @@ class SimulatedHost:
             return {"ok": True}
         if method == "fw.pending":
             return {"pending": SimulatedHost.fw_token is not None, "seconds_left": 60}
-        own = "table inet vpnix_create {\n\tchain input {\n\t\tudp dport 51820 accept\n\t}\n}\n"
+        own = "table inet vpnix_manager {\n\tchain input {\n\t\tudp dport 51820 accept\n\t}\n}\n"
         if method == "fw.show":
             return {"ruleset": own}
         if method == "fw.ruleset":
@@ -66,8 +66,8 @@ class SimulatedHost:
         if method == "wg.dump":
             return {"running": True, "peers": []}
         if method == "sys.journal":
-            return {"entries": [{"ts": 1763300000, "unit": "vpnix-create-api.service", "priority": 6, "message": "Application startup complete."},
-                                {"ts": 1763300060, "unit": "vpnix-create-helper.service", "priority": 4, "message": "simulated warning"}]}
+            return {"entries": [{"ts": 1763300000, "unit": "vpnix-manager-api.service", "priority": 6, "message": "Application startup complete."},
+                                {"ts": 1763300060, "unit": "vpnix-manager-helper.service", "priority": 4, "message": "simulated warning"}]}
         if method == "sys.update":
             import json
             from pathlib import Path

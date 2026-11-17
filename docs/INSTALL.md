@@ -1,4 +1,4 @@
-# Installing VPNix Create
+# Installing VPNix Manager
 
 ## Requirements
 
@@ -14,7 +14,7 @@ The installer adds these packages if missing: `python3`, `python3-venv`, `curl`,
 
 ## 1. Download and verify the release
 
-Download `vpnix-create-X.Y.Z.tar.gz` and `vpnix-create-X.Y.Z.tar.gz.sig` from the project's GitHub releases page.
+Download `vpnix-manager-X.Y.Z.tar.gz` and `vpnix-manager-X.Y.Z.tar.gz.sig` from the project's GitHub releases page.
 Each release is signed with the project's Ed25519 key, so check the signature before you install. The public key
 is the one in `installer/release-key.pub` of the official repository:
 
@@ -22,9 +22,9 @@ is the one in `installer/release-key.pub` of the official repository:
 python3 - X.Y.Z <<'EOF'
 import base64, hashlib, sys
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
-v = sys.argv[1]; b = open(f"vpnix-create-{v}.tar.gz", "rb").read()
+v = sys.argv[1]; b = open(f"vpnix-manager-{v}.tar.gz", "rb").read()
 key = Ed25519PublicKey.from_public_bytes(base64.b64decode("PASTE-THE-PUBLIC-KEY-HERE"))
-key.verify(base64.b64decode(open(f"vpnix-create-{v}.tar.gz.sig").read()), f"vpnix-create-release:{v}:{hashlib.sha256(b).hexdigest()}".encode())
+key.verify(base64.b64decode(open(f"vpnix-manager-{v}.tar.gz.sig").read()), f"vpnix-manager-release:{v}:{hashlib.sha256(b).hexdigest()}".encode())
 print("Signature OK")
 EOF
 ```
@@ -34,7 +34,7 @@ EOF
 ## 2. Install
 
 ```bash
-tar -xzf vpnix-create-X.Y.Z.tar.gz && cd vpnix-create-X.Y.Z
+tar -xzf vpnix-manager-X.Y.Z.tar.gz && cd vpnix-manager-X.Y.Z
 sudo bash installer/install.sh                            # no domain: HTTPS with a local certificate
 sudo bash installer/install.sh --domain vpn.example.org   # with a domain: free Let's Encrypt certificate
 ```
@@ -44,7 +44,7 @@ The installer is idempotent: running it again repairs or updates an installation
 
 At the end it prints the dashboard address and a **one-time administrator password**. It is shown only once and
 never stored. You have to change it at the first sign-in. If you lose it before signing in:
-`sudo vpnix-create-cli reset-admin --username admin`.
+`sudo vpnix-manager-cli reset-admin --username admin`.
 
 ## 3. Open the ports
 
@@ -56,7 +56,7 @@ In your cloud provider's firewall (Hetzner, AWS, DigitalOcean…), allow:
 | TCP 22 | SSH, as before |
 | the port of each VPN server | shown in the wizard, e.g. UDP 51820 (WireGuard), UDP/TCP 1194 (OpenVPN) |
 
-On the server itself, VPNix Create opens its VPN ports automatically in its own nftables table.
+On the server itself, VPNix Manager opens its VPN ports automatically in its own nftables table.
 
 Without a domain the browser warns once about the local certificate. That's expected: the connection is encrypted
 with a certificate made on your server. With `--domain` you get a normal trusted certificate.
@@ -72,26 +72,43 @@ with a certificate made on your server. With `--domain` you get a normal trusted
 
 | Path | Contents | Owner |
 |---|---|---|
-| `/opt/vpnix-create` | application, web UI, installer scripts, release public key | root, read-only for the service |
-| `/etc/vpnix-create` | `vpnix-create.env` (database URL, **secret key**), `install.conf` | root:vpnix-create 0750 |
-| `/var/lib/vpnix-create` | database, `backups/`, `updates/` | vpnix-create 0750 |
-| `/var/backups/vpnix-create` | pre-update snapshot of the database | root 0700 |
-| `/etc/wireguard/wgN.conf`, `/etc/openvpn/server/ovpnN*` | VPN servers created by VPNix Create (marked as managed) | root |
-| services | `vpnix-create-api`, `vpnix-create-helper`, `vpnix-create-updater@`, plus `caddy` | |
+| `/opt/vpnix-manager` | application, web UI, installer scripts, release public key | root, read-only for the service |
+| `/etc/vpnix-manager` | `vpnix-manager.env` (database URL, **secret key**), `install.conf` | root:vpnix-manager 0750 |
+| `/var/lib/vpnix-manager` | database, `backups/`, `updates/` | vpnix-manager 0750 |
+| `/var/backups/vpnix-manager` | pre-update snapshot of the database | root 0700 |
+| `/etc/wireguard/wgN.conf`, `/etc/openvpn/server/ovpnN*` | VPN servers created by VPNix Manager (marked as managed) | root |
+| services | `vpnix-manager-api`, `vpnix-manager-helper`, `vpnix-manager-updater@`, plus `caddy` | |
+
+## Upgrading from VPNix Create 1.0.0
+
+VPNix Manager was called VPNix Create until version 1.0.0. A 1.0.0 installation doesn't see 2.x releases (the
+release files were renamed), so upgrade once by hand with the 2.0.0 bundle:
+
+```bash
+tar -xzf vpnix-manager-2.0.0.tar.gz && cd vpnix-manager-2.0.0
+sudo bash installer/install.sh
+```
+
+The installer finds the 1.0.0 installation and migrates it in place:
+- **kept:** users, VPN servers, clients, keys, firewall rules, settings, backups and the saved domain;
+- **renamed:** services, folders, the CLI and the firewall table.
+
+Your VPN servers keep running, and clients don't need new configurations. From then on, updates work from the
+dashboard again. A rollback to 1.0.0 isn't possible after migrating, so take a backup first.
 
 ## Uninstalling
 
 ```bash
-sudo /opt/vpnix-create/installer/uninstall.sh --dry-run   # list what would be removed
-sudo /opt/vpnix-create/installer/uninstall.sh             # remove; keeps the database and backups
-sudo /opt/vpnix-create/installer/uninstall.sh --purge     # remove everything, including all data
+sudo /opt/vpnix-manager/installer/uninstall.sh --dry-run   # list what would be removed
+sudo /opt/vpnix-manager/installer/uninstall.sh             # remove; keeps the database and backups
+sudo /opt/vpnix-manager/installer/uninstall.sh --purge     # remove everything, including all data
 ```
 
-Uninstalling stops and deletes the VPN servers VPNix Create created. Your own WireGuard/OpenVPN configurations,
+Uninstalling stops and deletes the VPN servers VPNix Manager created. Your own WireGuard/OpenVPN configurations,
 other firewall tables and the installed packages are left alone.
 
 ## Using your own Caddy configuration
 
 If `/etc/caddy/Caddyfile` already has your own sites, the installer stops without changing it. Add a site that
-serves `/opt/vpnix-create/web` and proxies `/api/*` to `127.0.0.1:8090`, with the security headers from
+serves `/opt/vpnix-manager/web` and proxies `/api/*` to `127.0.0.1:8090`, with the security headers from
 `installer/install.sh`, then re-run the installer.

@@ -8,7 +8,7 @@ not in a public issue. Include the version, what you found and how to reproduce 
 
 ## Threat model
 
-VPNix Create runs on a server that holds VPN keys for all your clients. The main threats are:
+VPNix Manager runs on a server that holds VPN keys for all your clients. The main threats are:
 - someone on the internet taking over the dashboard;
 - a bug in the web application being used to get root;
 - a malicious or tampered update;
@@ -20,9 +20,9 @@ VPNix Create runs on a server that holds VPN keys for all your clients. The main
 | Part | Runs as | Can |
 |---|---|---|
 | Caddy | `caddy` | TLS, static files, proxy to the API on 127.0.0.1:8090. Its admin API is a socket in a 0700 directory (not TCP), so no other local user can reconfigure it |
-| API (`vpnix-create-api`) | `vpnix-create`, no capabilities, `ProtectSystem=strict`, systemd exposure 1.4 | database, read-only metrics, talk to the helper |
-| Helper (`vpnix-create-helper`) | root, sandboxed (exposure 5.7: it needs `CAP_NET_ADMIN` etc. for WireGuard, nftables, sysctl) | a fixed list of operations. Every argument is validated **before** anything runs; programs are called with argument lists, never a shell. It only touches `wgN`/`ovpnN` interfaces, configs that carry its marker, and the nftables table `inet vpnix_create` |
-| Updater (`vpnix-create-updater@`) | root, oneshot | install a bundle whose Ed25519 signature matches the release key; snapshot and roll back |
+| API (`vpnix-manager-api`) | `vpnix-manager`, no capabilities, `ProtectSystem=strict`, systemd exposure 1.4 | database, read-only metrics, talk to the helper |
+| Helper (`vpnix-manager-helper`) | root, sandboxed (exposure 5.7: it needs `CAP_NET_ADMIN` etc. for WireGuard, nftables, sysctl) | a fixed list of operations. Every argument is validated **before** anything runs; programs are called with argument lists, never a shell. It only touches `wgN`/`ovpnN` interfaces, configs that carry its marker, and the nftables table `inet vpnix_manager` |
+| Updater (`vpnix-manager-updater@`) | root, oneshot | install a bundle whose Ed25519 signature matches the release key; snapshot and roll back |
 
 A full compromise of the API therefore does **not** give root: the attacker could only call the helper's
 validated operations (which can still change VPN servers and the firewall table, so the dashboard must be protected).
@@ -43,7 +43,7 @@ validated operations (which can still change VPN servers and the firewall table,
 ## Data protection
 
 - VPN private keys, pre-shared keys, CA keys, TOTP secrets and SMTP/backup passphrases are encrypted in the database
-  with AES-256-GCM. The key is in `/etc/vpnix-create/vpnix-create.env` (root:vpnix-create 0640). Each value is bound
+  with AES-256-GCM. The key is in `/etc/vpnix-manager/vpnix-manager.env` (root:vpnix-manager 0640). Each value is bound
   to its row, so encrypted values can't be swapped between rows.
 - Backups: Argon2id-derived key, AES-256-GCM, SHA-256 integrity, mode 0600. Sign-in sessions are never restored.
 - Logs never contain keys or passwords. The audit log is hash-chained to detect tampering.

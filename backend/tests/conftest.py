@@ -7,13 +7,13 @@ os.environ.setdefault("VPNIX_BACKGROUND_JOBS", "false")
 
 import pytest
 from fastapi.testclient import TestClient
-from vpnix_create import db as dbmod
-from vpnix_create.cli import migrate
-from vpnix_create.config import get_settings
-from vpnix_create.deps import auth_limiter
-from vpnix_create.main import create_app
-from vpnix_create.models import Role, User
-from vpnix_create.security import hash_password
+from vpnix_manager import db as dbmod
+from vpnix_manager.cli import migrate
+from vpnix_manager.config import get_settings
+from vpnix_manager.deps import auth_limiter
+from vpnix_manager.main import create_app
+from vpnix_manager.models import Role, User
+from vpnix_manager.security import hash_password
 
 PW = "correct-horse-battery-9"
 
@@ -61,7 +61,7 @@ class FakeHelper:
         self.ovpn, self.crl, self.sessions = {}, {}, {}
 
     def call(self, method, **p):
-        from vpnix_create.helper_client import HelperError
+        from vpnix_manager.helper_client import HelperError
         if self.fail:
             raise HelperError("simulated failure")
         self.calls.append((method, p))
@@ -105,7 +105,7 @@ class FakeHelper:
             return {"running": True, "peers": self.dump.get(p["iface"], [])}
         if method == "sys.journal":
             self.journal_args = p
-            return {"entries": [{"ts": 1, "unit": "vpnix-create-api.service", "priority": 6, "message": "started"},
+            return {"entries": [{"ts": 1, "unit": "vpnix-manager-api.service", "priority": 6, "message": "started"},
                                 {"ts": 2, "unit": "wg-quick@wg1.service", "priority": 3, "message": "Failed to start"}]}
         if method == "sys.status":
             return {"ipv4_forwarding": True, "ipv6_forwarding": True, "wireguard_tools": True, "nftables": True, "kernel": "6.8"}
@@ -114,7 +114,7 @@ class FakeHelper:
 
 @pytest.fixture
 def helper(app):
-    from vpnix_create.helper_client import get_helper
+    from vpnix_manager.helper_client import get_helper
     h = FakeHelper()
     app.dependency_overrides[get_helper] = lambda: h
     return h
@@ -133,7 +133,7 @@ def _fw_extras(self, method, p):
             return {"ok": True, "confirm_token": self.fw_token, "rollback_seconds": p["rollback_seconds"]}
         return {"ok": True}
     if method == "fw.confirm":
-        from vpnix_create.helper_client import HelperError
+        from vpnix_manager.helper_client import HelperError
         if p["token"] != self.fw_token:
             raise HelperError("invalid request: nothing to confirm")
         self.fw_token = None
@@ -141,7 +141,7 @@ def _fw_extras(self, method, p):
     if method == "fw.pending":
         return {"pending": self.fw_token is not None, "seconds_left": 30}
     if method in ("fw.show", "fw.ruleset"):
-        return {"ruleset": "table inet vpnix_create {\n udp dport 51821 accept\n masquerade\n}"}
+        return {"ruleset": "table inet vpnix_manager {\n udp dport 51821 accept\n masquerade\n}"}
     return None
 
 

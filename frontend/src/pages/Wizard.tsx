@@ -104,7 +104,7 @@ export default function Wizard({ onClose, onDone }: { onClose: () => void; onDon
         <span><strong>NAT (masquerade)</strong><span className="muted text-sm block">Lets clients reach the internet through this server. Needed for full tunnel unless your router routes the VPN subnet back here.</span></span></label>
       <label className="card p-4 flex gap-3 items-start cursor-pointer"><input type="checkbox" checked={f.isolate_clients} onChange={(e) => set({ isolate_clients: e.target.checked })} />
         <span><strong>Isolate clients from each other</strong><span className="muted text-sm block">Recommended. Devices on this VPN cannot reach each other.</span></span></label>
-      <p className="muted text-sm m-0">VPNix Create opens {f.transport.toUpperCase()} {f.listen_port} and forwards VPN traffic in its own nftables table. Your other firewall rules are not modified; also allow the port in your hosting provider's firewall.</p>
+      <p className="muted text-sm m-0">VPNix Manager opens {f.transport.toUpperCase()} {f.listen_port} and forwards VPN traffic in its own nftables table. Your other firewall rules are not modified; also allow the port in your hosting provider's firewall.</p>
     </div>,
     review ? <>
       {review.ok ? <Alert kind="ok">All checks passed against the live server.</Alert> : <Alert>Fix the highlighted problems before deploying.</Alert>}

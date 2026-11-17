@@ -1,11 +1,11 @@
 [Unit]
-Description=VPNix Create updater (%i)
+Description=VPNix Manager updater (%i)
 # Started on request by the privileged helper (or update.sh). Runs as root because it replaces the
 # application itself; it only installs bundles whose Ed25519 signature matches release-key.pub.
 After=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/opt/vpnix-create/venv/bin/python -I /opt/vpnix-create/updater/updater.py %i
+ExecStart=/opt/vpnix-manager/venv/bin/python -I /opt/vpnix-manager/updater/updater.py %i
 TimeoutStartSec=20min
 KillMode=process
