@@ -8,6 +8,9 @@
   --glass: linear-gradient(180deg, rgb(255 255 255 / .10), rgb(255 255 255 / .04));
   --glass-edge: rgb(255 255 255 / .22); --shadow: 0 20px 50px rgb(0 0 0 / .45);
   --glow-1: rgb(37 99 235 / .30); --glow-2: rgb(34 211 238 / .18);
+  /* Solid tint under every glass surface, so text stays readable even where the browser does not blur
+     (hardware acceleration off, some GPUs, power saving). The blur, when present, adds the glass look on top. */
+  --glass-base: rgb(13 24 50 / .93); --glass-solid: rgb(13 24 50 / .995);
   color-scheme: dark;
 }
 :root[data-theme="light"] {
@@ -17,6 +20,7 @@
   --glass: linear-gradient(180deg, rgb(255 255 255 / .82), rgb(255 255 255 / .55));
   --glass-edge: rgb(255 255 255 / .95); --shadow: 0 18px 40px rgb(30 41 82 / .14);
   --glow-1: rgb(37 99 235 / .16); --glow-2: rgb(34 211 238 / .14);
+  --glass-base: rgb(255 255 255 / .93); --glass-solid: rgb(255 255 255 / .995);
   color-scheme: light;
 }
 html, body, #root { min-height: 100%; }
@@ -33,10 +37,12 @@ body {
 @layer components {
   /* Liquid Glass surface: translucency + blur + saturation, a bright top edge and a soft depth shadow. */
   .glass {
-    background: var(--glass); border: 1px solid var(--border);
+    background: var(--glass), var(--glass-base); border: 1px solid var(--border);
     backdrop-filter: blur(24px) saturate(170%); -webkit-backdrop-filter: blur(24px) saturate(170%);
     box-shadow: var(--shadow), inset 0 1px 0 var(--glass-edge);
   }
+  /* Dialogs and menus over page content: almost opaque, never see-through. */
+  .glass-solid { background: var(--glass), var(--glass-solid); }
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; }
   .muted { color: var(--muted); }
   .field { width: 100%; border-radius: 12px; border: 1px solid var(--border-strong); background: var(--surface-2);
@@ -54,4 +60,10 @@ body {
   .btn-danger { color: var(--bad); }
   .pill { display: inline-flex; align-items: center; gap: .35rem; border-radius: 999px; padding: .1rem .6rem;
     font-size: .75rem; font-weight: 600; background: var(--surface-2); }
+}
+
+/* Without backdrop blur, glass becomes (nearly) solid instead of see-through. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root { --glass-base: rgb(13 24 50 / .97); }
+  :root[data-theme="light"] { --glass-base: rgb(255 255 255 / .98); }
 }

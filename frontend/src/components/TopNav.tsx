@@ -19,27 +19,30 @@ export function TopNav({ me, theme, onTheme, onSignOut }: { me: Me; theme: strin
   const [open, setOpen] = useState(false);
   const loc = useLocation();
   useEffect(() => setOpen(false), [loc.pathname]);
-  return <header className="sticky top-3 z-40 mx-3 sm:mx-5 mt-3">
+  // The backdrop fades page content out above and behind the bar while scrolling.
+  return <header className="sticky top-0 z-40 px-3 sm:px-5 pt-3 pb-2" style={{ background: "linear-gradient(to bottom, var(--bg) 55%, transparent)" }}>
     <nav aria-label="Main" className="glass rounded-[22px] px-3 py-2 flex items-center gap-2">
       <div className="px-2 shrink-0"><Wordmark /></div>
-      <ul className="hidden lg:flex items-center gap-0.5 mx-auto list-none p-0 m-0">
+      <ul className="hidden xl:flex items-center gap-0.5 mx-auto list-none p-0 m-0 min-w-0">
         {NAV.map(({ to, label, icon: Icon }) => <li key={to}>
           <NavLink to={to} end={to === "/"} className={({ isActive }) =>
-            `flex items-center gap-1.5 whitespace-nowrap rounded-xl px-2.5 xl:px-3 py-2 text-[13.5px] font-medium no-underline transition-all duration-200 ${
+            `flex items-center gap-1.5 whitespace-nowrap rounded-xl px-2.5 2xl:px-3 py-2 text-[13.5px] font-medium no-underline transition-all duration-200 ${
               isActive ? "text-[var(--text)] bg-[var(--surface-2)] shadow-[inset_0_1px_0_var(--glass-edge)]" : "text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface)]"}`}>
             {({ isActive }) => <><Icon size={16} aria-hidden="true" style={{ color: isActive ? "var(--primary-2)" : undefined }} />{label}</>}
           </NavLink></li>)}
       </ul>
-      <div className="flex items-center gap-1.5 ml-auto lg:ml-0 shrink-0">
-        <span className="hidden 2xl:inline muted text-xs px-2">{me.username} · {me.role}</span>
+      <div className="flex items-center gap-1.5 ml-auto xl:ml-0 shrink-0">
+        <span title={`Signed in as ${me.username} (${me.role})`} aria-label={`Signed in as ${me.username}, ${me.role}`} role="img"
+          className="hidden xl:grid place-items-center w-8 h-8 rounded-full text-xs font-semibold uppercase select-none"
+          style={{ background: "linear-gradient(135deg, var(--primary), var(--primary-2))", color: "#fff" }}>{me.username.slice(0, 2)}</span>
         <button className="btn !p-2" onClick={onTheme} aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}>
           {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}</button>
-        <button className="btn !p-2 hidden lg:inline-flex" onClick={onSignOut} aria-label="Sign out"><LogOut size={16} /></button>
-        <button className="btn !p-2 lg:hidden" onClick={() => setOpen(!open)} aria-expanded={open} aria-controls="mobile-nav"
+        <button className="btn !p-2 hidden xl:inline-flex" onClick={onSignOut} aria-label="Sign out"><LogOut size={16} /></button>
+        <button className="btn !p-2 xl:hidden" onClick={() => setOpen(!open)} aria-expanded={open} aria-controls="mobile-nav"
           aria-label={open ? "Close menu" : "Open menu"}>{open ? <X size={18} /> : <Menu size={18} />}</button>
       </div>
     </nav>
-    {open && <div id="mobile-nav" className="glass rounded-[22px] mt-2 p-2 lg:hidden">
+    {open && <div id="mobile-nav" className="glass glass-solid rounded-[22px] mt-2 p-2 xl:hidden">
       <ul className="grid grid-cols-2 gap-1 list-none p-0 m-0">
         {NAV.map(({ to, label, icon: Icon }) => <li key={to}><NavLink to={to} end={to === "/"} className={({ isActive }) =>
           `flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium no-underline ${isActive ? "bg-[var(--surface-2)] text-[var(--text)]" : "text-[var(--muted)]"}`}>

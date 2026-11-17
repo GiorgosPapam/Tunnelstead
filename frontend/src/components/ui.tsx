@@ -35,8 +35,8 @@ export function Modal({ title, onClose, children }: { title: string; onClose: ()
     window.addEventListener("keydown", onKey);
     return () => { window.removeEventListener("keydown", onKey); prev?.focus(); };
   }, [onClose]);
-  return <div className="fixed inset-0 z-50 grid place-items-center p-4" style={{ background: "rgb(2 6 23 / .6)" }} onMouseDown={onClose}>
-    <div ref={ref} role="dialog" aria-modal="true" aria-label={title} className="glass rounded-3xl w-full max-w-lg p-6 max-h-[90vh] overflow-auto"
+  return <div className="fixed inset-0 z-50 grid place-items-center p-4 backdrop-blur-sm" style={{ background: "rgb(2 6 23 / .72)" }} onMouseDown={onClose}>
+    <div ref={ref} role="dialog" aria-modal="true" aria-label={title} className="glass glass-solid rounded-3xl w-full max-w-lg p-6 max-h-[90vh] overflow-auto"
       onMouseDown={(e) => e.stopPropagation()}>
       <div className="flex items-center justify-between mb-3"><h2 className="text-lg font-semibold m-0">{title}</h2>
         <button className="btn !p-1.5" onClick={onClose} aria-label="Close dialog"><X size={18} /></button></div>
