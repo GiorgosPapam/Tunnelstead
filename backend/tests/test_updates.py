@@ -3,6 +3,7 @@ import base64
 import importlib.util
 import io
 import json
+import os
 import pathlib
 import tarfile
 
@@ -229,3 +230,45 @@ def test_api_rollback_follows_snapshot(app, db, helper, monkeypatch, tmp_path):
     assert ("sys.update", {"action": "rollback"}) in helper.calls
     (tmp_path / "status.json").write_text(json.dumps({"state": "running", "rollback_to": "0.1.0"}))
     assert c.post("/api/updates/rollback").status_code == 422
+
+
+def test_rollback_restore_keeps_open_connections_consistent(tmp_path):
+    """Regression (found on the VPS): restoring by deleting -wal/-shm and copying the file made writes from an
+    already-open connection vanish. The SQLite backup API keeps every connection on the real database."""
+    import sqlite3
+    db, snap = tmp_path / "live.db", tmp_path / "snap.db"
+    setup = sqlite3.connect(db)
+    setup.execute("PRAGMA journal_mode=WAL")
+    setup.execute("create table users (name text)")
+    setup.executemany("insert into users values (?)", [("admin",), ("temp",)])
+    setup.commit()
+    setup.close()
+    U._sqlite_copy(db, snap)                       # snapshot before the "update"
+    held = sqlite3.connect(db)                     # e.g. a tool or test that keeps its connection open
+    held.execute("PRAGMA journal_mode=WAL")
+    held.execute("insert into users values ('made-after-snapshot')")
+    held.commit()
+    U._sqlite_copy(snap, db)                       # rollback restores the snapshot
+    held.execute("delete from users where name = 'temp'")
+    held.commit()
+    fresh = sqlite3.connect(db)
+    assert sorted(r[0] for r in fresh.execute("select name from users")) == ["admin"]
+
+
+def test_snapshot_copy_is_private_and_dropped(tmp_path, monkeypatch):
+    import sqlite3
+    import stat
+    monkeypatch.setattr(U, "SAFE", tmp_path / "safe")
+    monkeypatch.setattr(U, "PREV", tmp_path / "prev")
+    monkeypatch.setattr(U, "DB", tmp_path / "live.db")
+    monkeypatch.setattr(U, "APP", tmp_path / "app")
+    (tmp_path / "app").mkdir()
+    sqlite3.connect(tmp_path / "live.db").execute("create table t (x)").connection.commit()
+    monkeypatch.setattr(U, "sh", lambda *a, **k: (tmp_path / "prev").mkdir(exist_ok=True))
+    U.snapshot("1.0.0", "1.0.1")
+    copy = tmp_path / "safe" / "pre-update.db"
+    if os.name == "posix":
+        assert stat.S_IMODE(copy.stat().st_mode) == 0o600
+    assert copy.exists()
+    U.drop_snapshot()
+    assert not copy.exists() and not (tmp_path / "safe" / "snapshot.json").exists()

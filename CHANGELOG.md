@@ -2,6 +2,15 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org/).
 
+## 2.0.2
+
+- **Update rollback no longer loses database writes.** A rollback restored the database by deleting SQLite's
+  write-ahead files and copying the snapshot over the database. A process that still had the database open (an
+  admin tool, a script) kept writing into the deleted files, and those writes were silently lost. The restore now
+  uses SQLite's backup API.
+- The database snapshot taken before an update is created readable only by root, and it's removed together with
+  the rest of the snapshot.
+
 ## 2.0.1
 
 Security fixes. Updating is recommended.

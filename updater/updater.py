@@ -75,7 +75,8 @@ def rollback_target() -> str | None:
 
 def drop_snapshot() -> None:
     shutil.rmtree(PREV, ignore_errors=True)
-    (SAFE / "snapshot.json").unlink(missing_ok=True)
+    for f in ("snapshot.json", "pre-update.db"):
+        (SAFE / f).unlink(missing_ok=True)
 
 
 def status(state: str, **kw) -> None:
@@ -154,15 +155,21 @@ def snapshot(from_version: str, to_version: str) -> None:
     if DB.exists():
         tmp = SAFE / "pre-update.db.tmp"
         tmp.unlink(missing_ok=True)
-        src, dst = sqlite3.connect(DB), sqlite3.connect(tmp)
-        try:
-            src.backup(dst)
-        finally:
-            src.close()
-            dst.close()
+        os.close(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600))  # private from the first byte
+        _sqlite_copy(DB, tmp)
         os.replace(tmp, SAFE / "pre-update.db")
     (SAFE / "snapshot.json").write_text(json.dumps({"version": from_version, "replaced_by": to_version,
                                                     "taken_at": datetime.now(UTC).isoformat()}))
+
+
+def _sqlite_copy(src: Path, dst: Path) -> None:
+    """Consistent copy of a SQLite database into another one (online backup API; safe with WAL and open readers)."""
+    s, d = sqlite3.connect(src), sqlite3.connect(dst, timeout=30)
+    try:
+        s.backup(d)
+    finally:
+        s.close()
+        d.close()
 
 
 def restore_snapshot() -> str:
@@ -173,11 +180,13 @@ def restore_snapshot() -> str:
     sh("systemctl", "stop", "tunnelstead-api")
     sh("rsync", "-a", "--delete", f"{PREV}/", f"{APP}/")
     if (SAFE / "pre-update.db").exists():
-        for suffix in ("-wal", "-shm"):
-            Path(str(DB) + suffix).unlink(missing_ok=True)
-        shutil.copy2(SAFE / "pre-update.db", DB)
-        shutil.chown(DB, SVC_USER, SVC_USER)
-        os.chmod(DB, 0o600)
+        # Through SQLite's backup API, never by deleting the -wal/-shm files and copying over the database file:
+        # a process that still had the database open would keep writing into the deleted files and lose those writes.
+        _sqlite_copy(SAFE / "pre-update.db", DB)
+        for f in (DB, Path(str(DB) + "-wal"), Path(str(DB) + "-shm")):
+            if f.exists():
+                shutil.chown(f, SVC_USER, SVC_USER)
+                os.chmod(f, 0o600)
     units = APP / "installer" / "systemd"
     for u in units.glob("*.service"):
         shutil.copy2(u, f"/etc/systemd/system/{u.name}")
