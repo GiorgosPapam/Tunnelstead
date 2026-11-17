@@ -85,7 +85,7 @@ for OLD in vpnix-manager vpnix-create; do
   if [[ -f "/etc/sysctl.d/90-$OLD.conf" ]]; then mv "/etc/sysctl.d/90-$OLD.conf" /etc/sysctl.d/90-tunnelstead.conf; fi
   rm -f "/etc/systemd/system/$OLD-api.service" "/etc/systemd/system/$OLD-helper.service" \
         "/etc/systemd/system/$OLD-updater@.service" "/etc/systemd/system/caddy.service.d/$OLD.conf" "/usr/local/sbin/$OLD-cli"
-  rm -rf "/run/$OLD"
+  rm -rf "/run/$OLD" "/run/$OLD-update.lock"
   systemctl daemon-reload
   MIGRATED_FROM="$OLD"
   ok "Data, settings and backups moved; VPN servers keep running"

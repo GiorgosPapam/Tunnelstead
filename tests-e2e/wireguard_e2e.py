@@ -75,9 +75,14 @@ def temp_admin(create, name, pw=""):
     if create:
         db.add(User(username=name, role=Role.ADMIN, password_hash=hash_password(pw)))
     else:
-        u = db.query(User).filter_by(username=name).first()
-        u and db.delete(u)
+        # A restore or rollback during a test can bring the account back: remove every copy, and check.
+        from tunnelstead.models import UserSession
+        for u in db.query(User).filter_by(username=name).all():
+            db.query(UserSession).filter_by(user_id=u.id).delete()
+            db.delete(u)
     db.commit()
+    if not create:
+        assert db.query(User).filter_by(username=name).count() == 0, f"temporary admin {name} still exists"
     db.close()
 
 
