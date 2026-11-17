@@ -71,6 +71,6 @@ jobs:
         working-directory: frontend
         run: npm audit --audit-level=moderate
       - name: Secret scan (full history)
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7  # v2.3.9 (third-party: pinned to a commit)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
