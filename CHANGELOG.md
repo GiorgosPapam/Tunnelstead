@@ -2,6 +2,22 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org/).
 
+## 2.0.1
+
+Security fixes. Updating is recommended.
+
+- **2FA codes can no longer be replayed.** A code was accepted for its whole ~90-second window, so a code seen or
+  intercepted after use could be used again. Each code now works once.
+- **Request size limits.** The web server and the API refuse oversized requests (1 MB, or 520 MB for backup
+  uploads). Before this, anyone could make the API read arbitrarily large bodies into memory.
+- **Sign-in rate limiter memory is bounded.** It forgets expired entries, tracks at most 50,000 networks, and
+  groups IPv6 clients by /64.
+- Wrong 2FA codes when turning 2FA on or regenerating recovery codes now count toward the account lockout and are
+  rate-limited.
+- Webhooks connect to the exact address that passed the safety check (no DNS-rebinding window) and treat
+  non-2xx answers as failures.
+- The database restored by an update rollback and the update status file are readable only by the service account.
+
 ## 2.0.0
 
 **VPNix Create is now Tunnelstead.** Everything was renamed: the dashboard, services (`tunnelstead-api`,

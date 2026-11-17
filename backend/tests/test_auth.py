@@ -96,7 +96,8 @@ def test_mfa_with_recovery_codes_and_lockout(app, db):
 
     assert second_factor(codes[0]) == 200
     assert second_factor(codes[0]) == 401  # single use
-    assert second_factor(pyotp.TOTP(secret).now()) == 200
+    import time
+    assert second_factor(pyotp.TOTP(secret).at(time.time() + 30)) == 200  # the next code (the current one was used to enable)
     for _ in range(5):  # distributed guessing: per-IP limiter reset each round, account lock still applies
         auth_limiter.hits.clear()
         c3 = TestClient(app)

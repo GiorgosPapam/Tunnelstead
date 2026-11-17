@@ -102,7 +102,10 @@ def mfa_verify(body: CodeIn, request: Request, response: Response, s: UserSessio
         if ok:
             u.recovery_hashes = [x for x in u.recovery_hashes if x != h]
     else:
-        ok = verify_totp(decrypt(u.mfa_secret_enc, f"mfa:{u.id}"), body.code)
+        step = verify_totp(decrypt(u.mfa_secret_enc, f"mfa:{u.id}"), body.code, u.totp_last_step)
+        ok = step is not None
+        if ok:
+            u.totp_last_step = step
     if not ok:
         _fail(db, u)
         audit.record(db, "auth", "mfa", user=u, ip=ip, success=False)
@@ -183,7 +186,7 @@ def mfa_setup(u: User = Depends(current_user), db: DB = Depends(get_db)):
     if u.mfa_enabled:
         raise HTTPException(409, "Two-factor authentication is already on")
     secret = new_totp_secret()
-    u.mfa_secret_enc = encrypt(secret, f"mfa:{u.id}")
+    u.mfa_secret_enc, u.totp_last_step = encrypt(secret, f"mfa:{u.id}"), None
     db.commit()
     return {"secret": secret, "otpauth_uri": pyotp.TOTP(secret).provisioning_uri(name=u.username,
                                                                                  issuer_name="Tunnelstead")}
@@ -191,8 +194,13 @@ def mfa_setup(u: User = Depends(current_user), db: DB = Depends(get_db)):
 
 @router.post("/mfa/enable")
 def mfa_enable(body: CodeIn, request: Request, u: User = Depends(current_user), db: DB = Depends(get_db)):
-    if not u.mfa_secret_enc or not verify_totp(decrypt(u.mfa_secret_enc, f"mfa:{u.id}"), body.code):
+    auth_limiter.check(client_ip(request))
+    step = verify_totp(decrypt(u.mfa_secret_enc, f"mfa:{u.id}"), body.code, u.totp_last_step) if u.mfa_secret_enc else None
+    if step is None:
+        _fail(db, u)
+        db.commit()
         raise HTTPException(400, "That code is not valid. Check your device clock and try again.")
+    u.totp_last_step = step
     codes = recovery_codes()
     u.mfa_enabled, u.recovery_hashes = True, [sha256(c) for c in codes]
     audit.record(db, "auth", "mfa_enable", user=u, ip=client_ip(request))
@@ -207,7 +215,7 @@ def mfa_disable(body: PasswordChangeIn, request: Request, u: User = Depends(curr
         _fail(db, u)
         db.commit()
         raise HTTPException(400, "Password is incorrect")
-    u.mfa_enabled, u.mfa_secret_enc, u.recovery_hashes = False, None, []
+    u.mfa_enabled, u.mfa_secret_enc, u.recovery_hashes, u.totp_last_step = False, None, [], None
     audit.record(db, "auth", "mfa_disable", user=u, ip=client_ip(request))
     db.commit()
     return {"ok": True}
@@ -215,8 +223,13 @@ def mfa_disable(body: PasswordChangeIn, request: Request, u: User = Depends(curr
 
 @router.post("/mfa/recovery-codes")
 def regenerate_codes(body: CodeIn, request: Request, u: User = Depends(current_user), db: DB = Depends(get_db)):
-    if not u.mfa_enabled or not verify_totp(decrypt(u.mfa_secret_enc, f"mfa:{u.id}"), body.code):
+    auth_limiter.check(client_ip(request))
+    step = verify_totp(decrypt(u.mfa_secret_enc, f"mfa:{u.id}"), body.code, u.totp_last_step) if u.mfa_enabled else None
+    if step is None:
+        _fail(db, u)
+        db.commit()
         raise HTTPException(400, "Enter a current code from your authenticator app")
+    u.totp_last_step = step
     codes = recovery_codes()
     u.recovery_hashes = [sha256(c) for c in codes]
     audit.record(db, "auth", "recovery_codes_regenerate", user=u, ip=client_ip(request))

@@ -3,10 +3,14 @@ import contextlib
 import os
 
 from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 from . import __version__
 from .config import get_settings
 from .routers import auth, firewall, ops, system, updates, users, vpn
+
+BODY_LIMIT = 1024 * 1024            # 1 MB for every JSON API call
+UPLOAD_LIMIT = 520 * 1024 * 1024    # backup uploads (backup.MAX_SIZE plus headroom)
 
 # Same-origin only: no CORS middleware is installed, so browsers block cross-origin API calls.
 HEADERS = {
@@ -40,6 +44,18 @@ async def lifespan(_app: FastAPI):
 def create_app() -> FastAPI:
     app = FastAPI(title="Tunnelstead API", version=__version__, docs_url=None, redoc_url=None,
                   openapi_url="/api/openapi.json" if os.environ.get("TUNNELSTEAD_DEV") == "1" else None, lifespan=lifespan)
+
+    @app.middleware("http")
+    async def body_limit(request: Request, call_next):
+        """Second line of defence behind Caddy's limits: refuse oversized bodies before anything reads them."""
+        limit = UPLOAD_LIMIT if request.url.path == "/api/backups/upload" else BODY_LIMIT
+        length = request.headers.get("content-length")
+        if length is not None and (not length.isdigit() or int(length) > limit):
+            return JSONResponse({"detail": "Request body is too large"}, status_code=413)
+        streamed = length is None and request.headers.get("transfer-encoding")  # chunked: size unknown up front
+        if streamed and request.method in ("POST", "PUT", "PATCH") and request.url.path != "/api/backups/upload":
+            return JSONResponse({"detail": "Send a Content-Length header"}, status_code=411)
+        return await call_next(request)
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next):

@@ -187,7 +187,17 @@ $SITE {
 		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
 		Cross-Origin-Opener-Policy same-origin
 	}
+	# Request size limits: nobody (signed in or not) can make the API read huge bodies into memory.
+	handle /api/backups/upload {
+		request_body {
+			max_size 520MB
+		}
+		reverse_proxy 127.0.0.1:8090
+	}
 	handle /api/* {
+		request_body {
+			max_size 1MB
+		}
 		reverse_proxy 127.0.0.1:8090
 	}
 	handle {

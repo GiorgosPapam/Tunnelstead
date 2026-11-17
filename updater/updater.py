@@ -88,7 +88,7 @@ def status(state: str, **kw) -> None:
         shutil.chown(tmp, SVC_USER, SVC_USER)
     except (LookupError, PermissionError):
         pass
-    os.chmod(tmp, 0o640)
+    os.chmod(tmp, 0o600)  # read only by the service account (owner)
     os.replace(tmp, STATUS)
 
 
@@ -177,7 +177,7 @@ def restore_snapshot() -> str:
             Path(str(DB) + suffix).unlink(missing_ok=True)
         shutil.copy2(SAFE / "pre-update.db", DB)
         shutil.chown(DB, SVC_USER, SVC_USER)
-        os.chmod(DB, 0o640)
+        os.chmod(DB, 0o600)
     units = APP / "installer" / "systemd"
     for u in units.glob("*.service"):
         shutil.copy2(u, f"/etc/systemd/system/{u.name}")

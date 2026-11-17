@@ -45,6 +45,7 @@ class User(Base):
     mfa_secret_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
     mfa_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     recovery_hashes: Mapped[list] = mapped_column(JSON, default=list)
+    totp_last_step: Mapped[int | None] = mapped_column(Integer, nullable=True)  # replay protection
     failed_logins: Mapped[int] = mapped_column(Integer, default=0)
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

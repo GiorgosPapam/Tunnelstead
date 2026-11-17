@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import os
 import secrets
+from datetime import UTC, datetime
 
 import pyotp
 from argon2 import PasswordHasher
@@ -84,8 +85,20 @@ def new_totp_secret() -> str:
     return pyotp.random_base32()
 
 
-def verify_totp(secret: str, code: str) -> bool:
-    return pyotp.TOTP(secret).verify(code, valid_window=1)
+def verify_totp(secret: str, code: str, last_step: int | None = None) -> int | None:
+    """Check a 6-digit code (one 30 s step of clock drift allowed). Returns the matched time step, or None.
+
+    A code is accepted at most once: steps at or before `last_step` (the last accepted one) are rejected, so a code
+    seen or intercepted after use cannot be replayed.
+    """
+    if not isinstance(code, str) or len(code) != 6 or not code.isdigit():
+        return None
+    totp = pyotp.TOTP(secret)
+    now = totp.timecode(datetime.now(UTC))
+    for step in (now - 1, now, now + 1):
+        if hmac.compare_digest(totp.generate_otp(step), code) and (last_step is None or step > last_step):
+            return step
+    return None
 
 
 def recovery_codes(n: int = 10) -> list[str]:

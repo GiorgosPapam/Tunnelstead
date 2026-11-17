@@ -3,6 +3,7 @@
 Sending happens in a background thread with short timeouts, so a slow endpoint never blocks the API or collector.
 Repeated alerts with the same key are suppressed for REPEAT_AFTER (a server that stays down alerts once, not every 30 s).
 """
+import http.client
 import json
 import logging
 import smtplib
@@ -10,8 +11,6 @@ import socket
 import ssl
 import threading
 import time
-import urllib.error
-import urllib.request
 from email.message import EmailMessage
 
 from sqlalchemy.orm import Session as DB
@@ -70,36 +69,57 @@ def save_config(db: DB, webhook_url: str, email: dict, events: list[str], passwo
         db.add(Setting(key="notifications", value=value))
 
 
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, *a, **kw):  # a redirect could point to http:// or an internal address
-        raise urllib.error.HTTPError(a[1] if len(a) > 1 else "", 0, "redirects are not followed", None, None)
+def check_target(url: str) -> str:
+    """Resolve the webhook host once and refuse targets on this server or in link-local space (cloud metadata).
 
-
-def check_target(url: str) -> None:
-    """Refuse webhook targets on this server or in link-local space (cloud metadata endpoints)."""
+    Returns the address to connect to; the connection is pinned to it, so a DNS answer that changes between this
+    check and the connection (DNS rebinding) cannot redirect the request.
+    """
     import ipaddress
     import urllib.parse
     host = urllib.parse.urlsplit(url).hostname or ""
     try:
-        addrs = {ai[4][0] for ai in socket.getaddrinfo(host, 443, proto=socket.IPPROTO_TCP)}
+        addrs = [ai[4][0] for ai in socket.getaddrinfo(host, 443, proto=socket.IPPROTO_TCP)]
     except OSError as e:
         raise ValueError(f"cannot resolve {host}: {e}") from None
     for a in addrs:
         ip = ipaddress.ip_address(str(a).split("%")[0])
         if ip.is_loopback or ip.is_link_local or ip.is_unspecified or ip.is_multicast:
             raise ValueError(f"webhook target {host} ({ip}) is not allowed")
+    if not addrs:
+        raise ValueError(f"cannot resolve {host}")
+    return str(addrs[0])
+
+
+class _PinnedHTTPS(http.client.HTTPSConnection):
+    """HTTPS to a fixed IP address, with SNI and certificate checks for the real host name."""
+    def __init__(self, host: str, ip: str, *, context: ssl.SSLContext, **kw):
+        super().__init__(host, context=context, **kw)
+        self._ip, self._tls = ip, context
+
+    def connect(self) -> None:
+        sock = socket.create_connection((self._ip, self.port), self.timeout)
+        self.sock = self._tls.wrap_socket(sock, server_hostname=self.host)
 
 
 def _webhook(url: str, title: str, text: str) -> None:
+    import urllib.parse
     body = json.dumps({"text": f"*{title}*\n{text}", "content": f"**{title}**\n{text}", "title": title,
                        "message": text, "host": socket.gethostname(), "ts": int(time.time())}).encode()
     if not url.startswith("https://"):
         raise ValueError("webhook URL must use https")
-    check_target(url)
-    headers = {"Content-Type": "application/json", "User-Agent": "Tunnelstead"}
-    req = urllib.request.Request(url, data=body, method="POST", headers=headers)  # noqa: S310 - https checked above
-    with urllib.request.build_opener(_NoRedirect).open(req, timeout=8) as r:  # https and target checked above
+    ip = check_target(url)
+    u = urllib.parse.urlsplit(url)
+    conn = _PinnedHTTPS(u.hostname or "", ip, port=u.port or 443, timeout=8, context=ssl.create_default_context())
+    try:
+        conn.request("POST", (u.path or "/") + (f"?{u.query}" if u.query else ""), body,
+                     {"Content-Type": "application/json", "User-Agent": "Tunnelstead"})
+        r = conn.getresponse()
         r.read(1024)
+        if not 200 <= r.status < 300:  # redirects are deliberately not followed
+            raise ValueError(f"webhook answered HTTP {r.status}")
+    finally:
+        conn.close()
 
 
 def _email(cfg: dict, title: str, text: str) -> None:

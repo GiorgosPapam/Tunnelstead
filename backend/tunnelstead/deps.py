@@ -1,6 +1,7 @@
 """Request dependencies: client IP, rate limiting, session + CSRF validation, permission checks."""
+import ipaddress
 import time
-from collections import defaultdict, deque
+from collections import deque
 from datetime import UTC, timedelta
 
 from fastapi import Depends, HTTPException, Request
@@ -19,13 +20,41 @@ PASSWORD_CHANGE_ALLOWED = {"/api/auth/me", "/api/auth/password", "/api/auth/logo
 
 
 class RateLimiter:
-    """Sliding window per key (one API worker; documented limitation for multi-worker setups)."""
+    """Sliding window per client network (one API worker; documented limitation for multi-worker setups).
+
+    Memory stays bounded: expired entries are dropped, and at most MAX_KEYS networks are tracked (when full, the
+    stalest ones are evicted). IPv6 clients are grouped by /64, since one user controls a whole /64.
+    """
+    MAX_KEYS = 50_000
+
     def __init__(self, limit: int, window: float):
         self.limit, self.window = limit, window
-        self.hits: defaultdict[str, deque[float]] = defaultdict(deque)
+        self.hits: dict[str, deque[float]] = {}
 
-    def check(self, key: str) -> None:
-        now, q = time.monotonic(), self.hits[key]
+    @staticmethod
+    def key(ip: str) -> str:
+        try:
+            addr = ipaddress.ip_address(ip)
+        except ValueError:
+            return ip[:64]
+        if isinstance(addr, ipaddress.IPv6Address):
+            if addr.ipv4_mapped:
+                return str(addr.ipv4_mapped)
+            return str(ipaddress.ip_network(f"{addr}/64", strict=False))
+        return str(addr)
+
+    def _sweep(self, now: float) -> None:
+        for k in [k for k, q in self.hits.items() if not q or now - q[-1] > self.window]:
+            del self.hits[k]
+        if len(self.hits) >= self.MAX_KEYS:  # still full of active keys: evict the stalest
+            for k in sorted(self.hits, key=lambda k: self.hits[k][-1])[: len(self.hits) - self.MAX_KEYS + 1]:
+                del self.hits[k]
+
+    def check(self, ip: str) -> None:
+        now, key = time.monotonic(), self.key(ip)
+        if key not in self.hits and len(self.hits) >= self.MAX_KEYS:
+            self._sweep(now)
+        q = self.hits.setdefault(key, deque())
         while q and now - q[0] > self.window:
             q.popleft()
         if len(q) >= self.limit:
