@@ -187,14 +187,19 @@ $SITE {
 		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
 		Cross-Origin-Opener-Policy same-origin
 	}
-	# Request size limits: nobody (signed in or not) can make the API read huge bodies into memory.
+	# Request size limits: nobody (signed in or not) can make the API read huge bodies into memory. A declared
+	# size over the limit gets 413 at once; request_body also cuts off bodies without a declared size.
 	handle /api/backups/upload {
+		@too_large expression "{http.request.header.Content-Length} != '' && int({http.request.header.Content-Length}) > 545259520"
+		respond @too_large "Request body is too large" 413
 		request_body {
 			max_size 520MB
 		}
 		reverse_proxy 127.0.0.1:8090
 	}
 	handle /api/* {
+		@too_large expression "{http.request.header.Content-Length} != '' && int({http.request.header.Content-Length}) > 1048576"
+		respond @too_large "Request body is too large" 413
 		request_body {
 			max_size 1MB
 		}
